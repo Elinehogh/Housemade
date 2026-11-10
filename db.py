@@ -66,6 +66,9 @@ memberships = Table(
 
 def engine_from_url(url: str) -> Engine:
     """Create an engine for a database URL, for example 'sqlite://' in tests."""
+    # Supabase gives 'postgresql://...'; SQLAlchemy needs to be told to use psycopg.
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url.removeprefix("postgresql://")
     engine = create_engine(url, pool_pre_ping=True)
     if engine.dialect.name == "sqlite":
         # SQLite ignores foreign keys unless they are switched on.

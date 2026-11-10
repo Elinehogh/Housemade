@@ -2,10 +2,26 @@
 
 import streamlit as st
 
-from config import APP_NAME, TAGLINE
+import db
+from config import APP_NAME, LOCAL_DATABASE_URL, TAGLINE
 from logic import clean_member_name
 
 st.set_page_config(page_title=APP_NAME, page_icon="🏠")
+
+
+@st.cache_resource
+def get_engine():
+    """Connect once per app process: Supabase if the secret is set, else a local file."""
+    try:
+        url = st.secrets["DATABASE_URL"]
+    except (KeyError, FileNotFoundError):
+        url = LOCAL_DATABASE_URL
+    engine = db.engine_from_url(url)
+    db.create_tables(engine)
+    return engine
+
+
+engine = get_engine()
 
 st.title(f"🏠 {APP_NAME}")
 st.caption(TAGLINE)
@@ -18,3 +34,5 @@ if raw_name:
         st.success(f"Welcome, {clean_member_name(raw_name)}!")
     except ValueError as error:
         st.error(str(error))
+
+st.caption(f"Database: {engine.dialect.name}")
