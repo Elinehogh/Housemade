@@ -22,6 +22,12 @@ def clean_member_name(raw: str) -> str:
     return name
 
 
+def display_name(google_name: str | None, email: str) -> str:
+    """Pick a member name from the Google account: its name, shortened if needed, or the start of the email."""
+    name = " ".join((google_name or "").split())[:MAX_NAME_LENGTH].strip()
+    return name or email.split("@")[0][:MAX_NAME_LENGTH]
+
+
 def clean_flat_name(raw: str) -> str:
     """Return a tidy flat name, or raise ValueError if it is not allowed."""
     name = " ".join(raw.split())

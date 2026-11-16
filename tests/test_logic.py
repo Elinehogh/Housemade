@@ -8,6 +8,7 @@ from logic import (
     clean_flat_name,
     clean_invite_code,
     clean_member_name,
+    display_name,
     new_invite_code,
 )
 
@@ -59,3 +60,16 @@ def test_invite_code_is_normalised():
 def test_invalid_invite_codes_are_rejected(raw):
     with pytest.raises(ValueError):
         clean_invite_code(raw)
+
+
+def test_display_name_uses_the_google_name():
+    assert display_name("  Eline   Høgh ", "eline@example.com") == "Eline Høgh"
+
+
+def test_display_name_is_shortened_to_max_length():
+    assert len(display_name("a" * 50, "x@example.com")) == MAX_NAME_LENGTH
+
+
+def test_display_name_falls_back_to_email():
+    assert display_name(None, "eline.hogh@example.com") == "eline.hogh"
+    assert display_name("   ", "eline.hogh@example.com") == "eline.hogh"
