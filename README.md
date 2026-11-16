@@ -3,7 +3,7 @@
 Chores, shopping and a shared fund for your flat. Team project for
 Introduction to Programming, Nova SBE 2026/27.
 
-**Deployed app:** _TODO: add the URL once the app is deployed_
+**Deployed app:** (https://housemade.streamlit.app/)
 
 ## Team
 
