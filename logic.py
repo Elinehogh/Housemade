@@ -22,6 +22,37 @@ def clean_member_name(raw: str) -> str:
     return name
 
 
+def display_name(google_name: str | None, email: str) -> str:
+    """Pick a member name from the Google account: its name, shortened if needed, or the start of the email."""
+    name = " ".join((google_name or "").split())[:MAX_NAME_LENGTH].strip()
+    return name or email.split("@")[0][:MAX_NAME_LENGTH]
+
+
+def clean_amount(raw: float) -> float:
+    """Return a money amount rounded to cents, or raise ValueError if it is not positive."""
+    amount = round(float(raw), 2)
+    if amount <= 0:
+        raise ValueError("Amount must be more than €0.")
+    return amount
+
+
+def balances(members: list[str], payments: list[tuple[str, float]]) -> dict[str, float]:
+    """Split shared costs equally. Positive: the flat owes this member. Negative: they owe the flat.
+
+    The balances always add up to zero (up to rounding by a few cents).
+    """
+    if not members:
+        return {}
+    total = sum(amount for _, amount in payments)
+    share = total / len(members)
+    paid = {name: 0.0 for name in members}
+    for name, amount in payments:
+        if name not in paid:
+            raise ValueError(f"{name} is not a member of the flat.")
+        paid[name] += amount
+    return {name: round(paid[name] - share, 2) for name in members}
+
+
 def clean_flat_name(raw: str) -> str:
     """Return a tidy flat name, or raise ValueError if it is not allowed."""
     name = " ".join(raw.split())
