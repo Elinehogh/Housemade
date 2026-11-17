@@ -1,6 +1,7 @@
 """The rules of the app. Pure functions only: no Streamlit and no database here."""
 
 import secrets
+from datetime import date, timedelta
 
 MAX_NAME_LENGTH = 30
 MAX_FLAT_NAME_LENGTH = 40
@@ -74,3 +75,57 @@ def clean_invite_code(raw: str) -> str:
     if len(code) != INVITE_CODE_LENGTH or any(c not in INVITE_ALPHABET for c in code):
         raise ValueError(f"An invite code has {INVITE_CODE_LENGTH} letters and digits.")
     return code
+
+
+# --- Chores ------------------------------------------------------------------
+
+MAX_CHORE_LENGTH = 40
+MIN_POINTS = 1
+MAX_POINTS = 10
+
+
+def clean_chore_name(raw: str) -> str:
+    """Return a tidy chore name, or raise ValueError if it is not allowed."""
+    name = " ".join(raw.split())
+    if not name:
+        raise ValueError("Chore cannot be empty.")
+    if len(name) > MAX_CHORE_LENGTH:
+        raise ValueError(f"Chore can be at most {MAX_CHORE_LENGTH} characters.")
+    return name
+
+
+def clean_points(raw: float) -> int:
+    """Return the points as a whole number, or raise ValueError if they are not allowed."""
+    if raw != int(raw):
+        raise ValueError("Points must be a whole number.")
+    points = int(raw)
+    if not MIN_POINTS <= points <= MAX_POINTS:
+        raise ValueError(f"Points must be from {MIN_POINTS} to {MAX_POINTS}.")
+    return points
+
+
+def check_can_tick_off(assigned_to: int, is_done: bool, user_id: int) -> None:
+    """Raise ValueError unless this user may tick off this chore now."""
+    if assigned_to != user_id:
+        raise ValueError("Only the person the chore is given to can tick it off.")
+    if is_done:
+        raise ValueError("This chore is already done.")
+
+
+def week_start(day: date) -> date:
+    """Return the Monday of the week that this day is in."""
+    return day - timedelta(days=day.weekday())
+
+
+def leaderboard(members: dict[int, str], done: list[tuple[int, int]]) -> list[tuple[str, int]]:
+    """Rank members by points: highest first, then by name. Members without points get 0.
+
+    members maps user id to name. done is a list of (user id, points) for finished chores.
+    """
+    points = {user_id: 0 for user_id in members}
+    for user_id, chore_points in done:
+        if user_id not in points:
+            raise ValueError("Only members of the flat can get points.")
+        points[user_id] += chore_points
+    ranking = [(members[user_id], total) for user_id, total in points.items()]
+    return sorted(ranking, key=lambda item: (-item[1], item[0]))
