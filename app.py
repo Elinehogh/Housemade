@@ -17,9 +17,17 @@ def get_engine():
         url = st.secrets["DATABASE_URL"]
     except (KeyError, FileNotFoundError):
         url = LOCAL_DATABASE_URL
-    engine = db.engine_from_url(url)
-    db.create_tables(engine)
-    return engine
+    return db.engine_from_url(url)
+
+
+@st.cache_resource
+def make_tables(_engine, table_names: tuple[str, ...]) -> None:
+    """Create missing tables once per set of tables.
+
+    Streamlit Cloud keeps the app running when new code is merged, so get_engine() is not run again.
+    Because the table names are part of the cache key, a newly added table is created right away.
+    """
+    db.create_tables(_engine)
 
 
 def login_is_set_up() -> bool:
@@ -35,6 +43,7 @@ st.caption(TAGLINE)
 
 if login_is_set_up():
     engine = get_engine()
+    make_tables(engine, tuple(sorted(db.metadata.tables)))
     if engine.dialect.name == "sqlite":
         st.warning("Using a local test database: data is not shared and may be lost. "
                    "Set DATABASE_URL in the secrets to use the real database.")
@@ -111,7 +120,7 @@ with home_tab:
 with chores_tab:
     chores.show(engine, user_id)
 with shopping_tab:
-    shopping.show()
+    shopping.show(engine, user_id)
 with fund_tab:
     fund.show(engine, user_id)
 with activities_tab:

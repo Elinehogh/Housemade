@@ -4,6 +4,7 @@ import csv
 import io
 import secrets
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 
 MAX_NAME_LENGTH = 30
 MAX_FLAT_NAME_LENGTH = 40
@@ -185,3 +186,133 @@ def fund_csv(entries: list[dict]) -> str:
         euros = format_euros(entry["cents"]).replace("€", "")
         writer.writerow([entry["date"].isoformat(), entry["what"], entry["who"], euros])
     return out.getvalue()
+
+
+# --- Shopping ----------------------------------------------------------------
+
+MAX_ITEM_LENGTH = 40
+MAX_AMOUNT_CENTS = 1_000_000  # €10,000
+
+# Things a flat often runs out of, offered in a list so nobody has to type them.
+COMMON_ITEMS = (
+    "Toilet paper",
+    "Kitchen roll",
+    "Dish soap",
+    "Dishwasher tablets",
+    "Laundry detergent",
+    "Hand soap",
+    "Bin bags",
+    "Sponges",
+    "Cleaning spray",
+    "Toilet cleaner",
+    "Aluminium foil",
+    "Cling film",
+    "Coffee",
+    "Salt",
+    "Cooking oil",
+)
+
+
+def _tidy_text(raw: str, what: str, max_length: int) -> str:
+    text = " ".join(raw.split())
+    if not text:
+        raise ValueError(f"{what} cannot be empty.")
+    if len(text) > max_length:
+        raise ValueError(f"{what} can be at most {max_length} characters.")
+    return text
+
+
+def clean_item_name(raw: str) -> str:
+    """Return a tidy shopping item, or raise ValueError if it is not allowed."""
+    return _tidy_text(raw, "Item", MAX_ITEM_LENGTH)
+
+
+def cost_to_cents(raw) -> int:
+    """Turn an amount in euros (for example 18.4 or "12.50") into whole cents, or raise ValueError.
+
+    Allowed: more than €0, at most €10,000, and at most 2 decimals.
+    """
+    try:
+        # str() first, so 18.4 becomes exactly 18.4 and not 18.399999...
+        amount = Decimal(str(raw))
+    except InvalidOperation:
+        raise ValueError("Amount must be a number.") from None
+    if not amount.is_finite():
+        raise ValueError("Amount must be a number.")
+    cents = amount * 100
+    if cents != cents.to_integral_value():
+        raise ValueError("Amount can have at most 2 decimals.")
+    cents = int(cents)
+    if cents <= 0:
+        raise ValueError("Amount must be more than €0.")
+    if cents > MAX_AMOUNT_CENTS:
+        raise ValueError(f"Amount can be at most {format_euros(MAX_AMOUNT_CENTS)}.")
+    return cents
+
+
+def split_cents(total: int, people: int) -> list[int]:
+    """Split cents as equally as possible. Leftover cents go to the first people, so nothing is lost."""
+    if people <= 0:
+        raise ValueError("A cost must be split between at least one person.")
+    share, leftover = divmod(total, people)
+    return [share + 1 if i < leftover else share for i in range(people)]
+
+
+def shopping_balances(
+    members: list[int], expenses: list[tuple[int, int]], payments: list[tuple[int, int, int]]
+) -> dict[int, int]:
+    """Return each member's balance in cents. Positive: they should get money back. Negative: they owe.
+
+    members: user ids. expenses: (who paid, cents), split equally between all members.
+    payments: (payer, receiver, cents) for money paid back. The balances always add up to exactly 0.
+    """
+    order = sorted(members)
+    balance = {user_id: 0 for user_id in order}
+
+    def check_member(user_id):
+        if user_id not in balance:
+            raise ValueError("Only members of the flat can share costs.")
+
+    for payer, cents in expenses:
+        check_member(payer)
+        balance[payer] += cents
+        for user_id, share in zip(order, split_cents(cents, len(order))):
+            balance[user_id] -= share
+    for payer, receiver, cents in payments:
+        check_member(payer)
+        check_member(receiver)
+        balance[payer] += cents
+        balance[receiver] -= cents
+    return balance
+
+
+def settle_up(balances: dict[int, int]) -> list[tuple[int, int, int]]:
+    """Return a short list of (payer, receiver, cents) that makes every balance 0.
+
+    The biggest debts are paid to the biggest creditors first.
+    """
+    biggest_first = sorted(balances.items(), key=lambda item: (-abs(item[1]), item[0]))
+    owes = [[user_id, -cents] for user_id, cents in biggest_first if cents < 0]
+    gets = [[user_id, cents] for user_id, cents in biggest_first if cents > 0]
+    transfers = []
+    for debtor in owes:
+        for creditor in gets:
+            cents = min(debtor[1], creditor[1])
+            if cents > 0:
+                transfers.append((debtor[0], creditor[0], cents))
+                debtor[1] -= cents
+                creditor[1] -= cents
+    return transfers
+
+
+def check_payment(payer: int, receiver: int, confirmed_by: int, members: list[int]) -> None:
+    """Raise ValueError unless this payment may be confirmed.
+
+    Only the person who received the money can confirm it, so nobody can mark their own debt as paid.
+    """
+    if payer not in members or receiver not in members:
+        raise ValueError("Payments can only be between members of your flat.")
+    if payer == receiver:
+        raise ValueError("You cannot pay yourself.")
+    if confirmed_by != receiver:
+        raise ValueError("Only the person who got the money can confirm a payment.")
