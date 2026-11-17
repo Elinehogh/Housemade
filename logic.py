@@ -85,6 +85,26 @@ def clean_invite_code(raw: str) -> str:
 MAX_CHORE_LENGTH = 40
 MIN_POINTS = 1
 MAX_POINTS = 10
+DEFAULT_POINTS = 2
+
+# Chores most flats have, with suggested points: bigger jobs give more points.
+COMMON_CHORES = {
+    "Clean the bathroom": 5,
+    "Clean the kitchen": 4,
+    "Vacuum": 3,
+    "Mop the floors": 3,
+    "Do the dishes": 2,
+    "Take out the trash": 1,
+    "Take out the recycling": 1,
+    "Return bottles and cans": 2,
+    "Wipe the kitchen counters": 1,
+    "Clean the fridge": 3,
+    "Clean the oven": 5,
+    "Dust the shelves": 2,
+    "Clean the windows": 4,
+    "Change the towels": 1,
+    "Water the plants": 1,
+}
 
 
 def clean_chore_name(raw: str) -> str:
@@ -105,6 +125,15 @@ def clean_points(raw: float) -> int:
     if not MIN_POINTS <= points <= MAX_POINTS:
         raise ValueError(f"Points must be from {MIN_POINTS} to {MAX_POINTS}.")
     return points
+
+
+def suggested_points(name: str | None) -> int:
+    """Return the suggested points for a chore: from COMMON_CHORES if it is one, else DEFAULT_POINTS."""
+    wanted = " ".join((name or "").split()).lower()
+    for chore, points in COMMON_CHORES.items():
+        if chore.lower() == wanted:
+            return points
+    return DEFAULT_POINTS
 
 
 def check_can_tick_off(assigned_to: int, is_done: bool, user_id: int) -> None:

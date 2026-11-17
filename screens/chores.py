@@ -3,7 +3,7 @@
 import streamlit as st
 
 import db
-from logic import MAX_POINTS, MIN_POINTS
+from logic import COMMON_CHORES, MAX_POINTS, MIN_POINTS, suggested_points
 
 MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
 
@@ -33,22 +33,45 @@ def show(engine=None, user_id: int | None = None) -> None:
     st.caption("You can only tick off chores that are given to you.")
 
     members = db.flat_members(engine, user_id)
-    with st.form("add_chore", clear_on_submit=True):
+    with st.container(border=True):
         st.write("**Add a chore**")
-        name = st.text_input("Chore", placeholder="Clean bathroom")
-        points = st.number_input("Points", min_value=MIN_POINTS, max_value=MAX_POINTS, value=MIN_POINTS, step=1)
-        who = st.selectbox("Who should do it?", list(members), format_func=members.get)
-        if st.form_submit_button("Add chore"):
-            try:
-                db.add_chore(engine, user_id, name, points, who)
-                st.rerun()
-            except ValueError as error:
-                st.error(str(error))
+        name = st.selectbox(
+            "Chore",
+            list(COMMON_CHORES),
+            index=None,
+            key="new_chore",
+            placeholder="Pick a common chore, or type your own",
+            accept_new_options=True,
+        )
+        # The key follows the chore, so the points jump to the suggestion when another chore is picked.
+        st.number_input(
+            "Points",
+            min_value=MIN_POINTS,
+            max_value=MAX_POINTS,
+            value=suggested_points(name),
+            step=1,
+            key=f"new_points_{name}",
+        )
+        st.selectbox("Who should do it?", list(members), format_func=members.get, key="new_chore_who")
+        st.button("Add chore", on_click=_add_chore, args=(engine, user_id))
+        if "chore_error" in st.session_state:
+            st.error(st.session_state.pop("chore_error"))
 
     st.subheader("🏆 Leaderboard this week")
     for place, (name, points) in enumerate(db.chores_leaderboard(engine, user_id), start=1):
         st.write(f"{MEDALS.get(place, '  ')} **{name}**: {points} points")
     st.caption("This week's winner picks the next flat activity.")
+
+
+def _add_chore(engine, user_id: int) -> None:
+    """Save the chore from the form. Runs before the page is drawn again, so the form can be cleared."""
+    name = st.session_state.get("new_chore") or ""
+    points = st.session_state.get(f"new_points_{st.session_state.get('new_chore')}", suggested_points(name))
+    try:
+        db.add_chore(engine, user_id, name, points, st.session_state.get("new_chore_who"))
+        st.session_state.new_chore = None
+    except ValueError as error:
+        st.session_state.chore_error = str(error)
 
 
 def show_demo() -> None:

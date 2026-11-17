@@ -12,6 +12,11 @@ the activities.
 - Any member can add a chore to their own flat: a name, how many points it is
   worth, and which member of the flat should do it.
 - A chore name is 1 to 40 characters. Extra spaces are removed.
+- To add a chore, members can pick a common one from a list (clean the
+  bathroom, vacuum, take out the trash and more) or type their own. A common
+  chore comes with suggested points, for example 5 for the bathroom and 1 for
+  the trash, which the member can change before adding it. A chore they type
+  themselves starts at 2 points.
 - A chore is worth 1 to 10 points (whole numbers).
 - A chore can only be given to a member of the same flat.
 - Only the person a chore is given to can tick it off.
@@ -32,6 +37,7 @@ the activities.
 ## Done when
 
 - Chores are saved in the database, not in the sample data.
+- Every common chore has a valid name and suggested points from 1 to 10.
 - Tests cover adding, ticking off and the leaderboard, both accepted and
   rejected actions: an empty or too long name, 0 or 11 points, a person from
   another flat, ticking off someone else's chore, ticking off twice, and a

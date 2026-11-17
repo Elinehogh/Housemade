@@ -5,6 +5,8 @@ from datetime import date
 import pytest
 
 from logic import (
+    COMMON_CHORES,
+    DEFAULT_POINTS,
     MAX_CHORE_LENGTH,
     MAX_POINTS,
     MIN_POINTS,
@@ -12,6 +14,7 @@ from logic import (
     clean_chore_name,
     clean_points,
     leaderboard,
+    suggested_points,
     week_start,
 )
 
@@ -121,3 +124,26 @@ def test_members_with_the_same_name_are_kept_apart():
 def test_points_for_a_non_member_are_rejected():
     with pytest.raises(ValueError):
         leaderboard(MEMBERS, [(99, 2)])
+
+
+# --- Common chores -----------------------------------------------------------
+
+
+def test_common_chores_have_valid_names_and_points():
+    assert len({name.lower() for name in COMMON_CHORES}) == len(COMMON_CHORES)
+    for name, points in COMMON_CHORES.items():
+        assert clean_chore_name(name) == name
+        assert clean_points(points) == points
+
+
+def test_common_chore_gets_its_suggested_points():
+    assert suggested_points("Clean the bathroom") == COMMON_CHORES["Clean the bathroom"]
+
+
+def test_suggested_points_ignore_case_and_spaces():
+    assert suggested_points("  take out THE trash ") == COMMON_CHORES["Take out the trash"]
+
+
+@pytest.mark.parametrize("name", ["Feed the cat", "", None])
+def test_own_chore_starts_at_default_points(name):
+    assert suggested_points(name) == DEFAULT_POINTS
