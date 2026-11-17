@@ -21,7 +21,9 @@ from sqlalchemy import (
     String,
     Table,
     create_engine,
+    delete,
     event,
+    func,
     insert,
     select,
     update,
@@ -31,19 +33,23 @@ from sqlalchemy.engine import Engine
 from logic import (
     INVITE_CODE_LENGTH,
     MAX_CHORE_LENGTH,
+    MAX_DESCRIPTION_LENGTH,
     MAX_FLAT_NAME_LENGTH,
     MAX_NAME_LENGTH,
     MAX_POINTS,
     MIN_POINTS,
     ROLES,
+    check_can_take_out,
     check_can_tick_off,
     clean_chore_name,
+    clean_description,
     clean_flat_name,
     clean_invite_code,
     clean_member_name,
     clean_points,
     leaderboard,
     new_invite_code,
+    to_cents,
     week_start,
 )
 
@@ -86,6 +92,30 @@ chores = Table(
     Column("assigned_to", ForeignKey("users.id"), nullable=False),
     Column("done_at", DateTime, nullable=True),
     CheckConstraint(f"points BETWEEN {MIN_POINTS} AND {MAX_POINTS}", name="valid_points"),
+)
+
+# Money in (pant, positive cents) and out (shared costs, negative cents) of a flat's fund.
+# Whole cents, so sums are exact. The balance is the sum of all entries.
+fund_entries = Table(
+    "fund_entries",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("flat_id", ForeignKey("flats.id"), nullable=False),
+    Column("user_id", ForeignKey("users.id"), nullable=False),
+    Column("what", String(MAX_DESCRIPTION_LENGTH), nullable=False),
+    Column("cents", Integer, nullable=False),
+    Column("created_at", DateTime, nullable=False),
+    CheckConstraint("cents <> 0", name="nonzero_cents"),
+)
+
+# At most one savings goal per flat.
+fund_goals = Table(
+    "fund_goals",
+    metadata,
+    Column("flat_id", ForeignKey("flats.id"), primary_key=True),
+    Column("name", String(MAX_DESCRIPTION_LENGTH), nullable=False),
+    Column("cents", Integer, nullable=False),
+    CheckConstraint("cents > 0", name="positive_goal"),
 )
 
 
@@ -260,3 +290,83 @@ def chores_leaderboard(engine: Engine, user_id: int, today: date | None = None) 
     with engine.connect() as conn:
         done = [(row.assigned_to, row.points) for row in conn.execute(query)]
     return leaderboard(members, done)
+
+
+# --- Fund --------------------------------------------------------------------
+
+
+def _own_admin_flat_id(engine: Engine, user_id: int) -> int:
+    """Return the id of the user's own flat, or raise ValueError unless they are its admin."""
+    membership = get_membership(engine, user_id)
+    if membership is None:
+        raise ValueError("You are not in a flat.")
+    if membership["role"] != "admin":
+        raise ValueError("Only the admin can do this.")
+    return membership["flat_id"]
+
+
+def _balance(conn, flat_id: int) -> int:
+    return conn.scalar(select(func.coalesce(func.sum(fund_entries.c.cents), 0)).where(fund_entries.c.flat_id == flat_id))
+
+
+def add_pant(engine: Engine, user_id: int, amount: float, now: datetime | None = None) -> None:
+    """Add pant money from this user to their own flat's fund."""
+    cents = to_cents(amount)
+    flat_id = _own_flat_id(engine, user_id)
+    with engine.begin() as conn:
+        conn.execute(insert(fund_entries).values(
+            flat_id=flat_id, user_id=user_id, what="Pant", cents=cents, created_at=now or datetime.now()))
+
+
+def take_out(engine: Engine, user_id: int, what: str, amount: float, now: datetime | None = None) -> None:
+    """Take money out of the fund for a shared cost. Only the admin can, and never below zero."""
+    what = clean_description(what)
+    cents = to_cents(amount)
+    flat_id = _own_admin_flat_id(engine, user_id)
+    with engine.begin() as conn:
+        # Lock the flat's row, so two withdrawals at the same time cannot both pass the check.
+        conn.execute(select(flats.c.id).where(flats.c.id == flat_id).with_for_update())
+        check_can_take_out(_balance(conn, flat_id), cents)
+        conn.execute(insert(fund_entries).values(
+            flat_id=flat_id, user_id=user_id, what=what, cents=-cents, created_at=now or datetime.now()))
+
+
+def fund_balance(engine: Engine, user_id: int) -> int:
+    """Return the balance of the user's own flat's fund, in cents."""
+    flat_id = _own_flat_id(engine, user_id)
+    with engine.connect() as conn:
+        return _balance(conn, flat_id)
+
+
+def fund_history(engine: Engine, user_id: int) -> list[dict]:
+    """Return every entry in the user's own flat's fund, newest first."""
+    flat_id = _own_flat_id(engine, user_id)
+    query = (
+        select(fund_entries.c.created_at, fund_entries.c.what, fund_entries.c.cents, users.c.name)
+        .join(users, users.c.id == fund_entries.c.user_id)
+        .where(fund_entries.c.flat_id == flat_id)
+        .order_by(fund_entries.c.created_at.desc(), fund_entries.c.id.desc())
+    )
+    with engine.connect() as conn:
+        return [
+            {"date": row.created_at.date(), "what": row.what, "who": row.name, "cents": row.cents}
+            for row in conn.execute(query)
+        ]
+
+
+def set_fund_goal(engine: Engine, user_id: int, name: str, amount: float) -> None:
+    """Set (or replace) the savings goal of the user's own flat. Only the admin can."""
+    name = clean_description(name)
+    cents = to_cents(amount)
+    flat_id = _own_admin_flat_id(engine, user_id)
+    with engine.begin() as conn:
+        conn.execute(delete(fund_goals).where(fund_goals.c.flat_id == flat_id))
+        conn.execute(insert(fund_goals).values(flat_id=flat_id, name=name, cents=cents))
+
+
+def get_fund_goal(engine: Engine, user_id: int) -> dict | None:
+    """Return the savings goal of the user's own flat as {'name', 'cents'}, or None."""
+    flat_id = _own_flat_id(engine, user_id)
+    with engine.connect() as conn:
+        row = conn.execute(select(fund_goals.c.name, fund_goals.c.cents).where(fund_goals.c.flat_id == flat_id)).first()
+    return None if row is None else {"name": row.name, "cents": row.cents}
