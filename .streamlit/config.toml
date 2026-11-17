@@ -1,0 +1,3 @@
+[theme]
+# Background of the main page. Any hex colour works, e.g. "#1E3A8A" for dark blue.
+backgroundColor = "#CFE2FF"
