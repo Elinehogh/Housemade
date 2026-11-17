@@ -3,7 +3,7 @@
 import streamlit as st
 
 import db
-from logic import COMMON_ITEMS, MAX_AMOUNT_CENTS, balances, clean_amount, euros
+from logic import COMMON_ITEMS, MAX_AMOUNT_CENTS, balances, clean_amount, format_euros
 from screens.demo_data import MEMBERS
 
 
@@ -97,16 +97,16 @@ def show_money(engine, user_id: int) -> None:
     st.write("**Who owes what**")
     for name, cents in overview["balances"]:
         if cents > 0:
-            st.write(f"🟢 **{name}** should get back {euros(cents)}")
+            st.write(f"🟢 **{name}** should get back {format_euros(cents)}")
         elif cents < 0:
-            st.write(f"🔴 **{name}** owes {euros(-cents)}")
+            st.write(f"🔴 **{name}** owes {format_euros(-cents)}")
         else:
             st.write(f"⚪ **{name}** is even")
 
     if overview["settle_up"]:
         st.write("**To settle up**")
         for payer, receiver, cents in overview["settle_up"]:
-            st.write(f"- {payer} pays {receiver} {euros(cents)}")
+            st.write(f"- {payer} pays {receiver} {format_euros(cents)}")
 
     others = {member: name for member, name in members.items() if member != user_id}
     if others:
@@ -126,9 +126,9 @@ def show_money(engine, user_id: int) -> None:
     if overview["expenses"] or overview["payments"]:
         with st.expander("History"):
             for expense in overview["expenses"]:
-                st.write(f"🧾 {expense['who']} paid {euros(expense['cents'])} for {expense['description']} · {_when(expense['at'])}")
+                st.write(f"🧾 {expense['who']} paid {format_euros(expense['cents'])} for {expense['description']} · {_when(expense['at'])}")
             for payment in overview["payments"]:
-                st.write(f"✅ {payment['from']} paid {payment['to']} back {euros(payment['cents'])} · {_when(payment['at'])}")
+                st.write(f"✅ {payment['from']} paid {payment['to']} back {format_euros(payment['cents'])} · {_when(payment['at'])}")
 
 
 def show_demo() -> None:

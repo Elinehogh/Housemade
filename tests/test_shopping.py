@@ -10,11 +10,11 @@ from logic import (
     check_payment,
     clean_description,
     clean_item_name,
-    euros,
+    format_euros,
     shopping_balances,
     split_cents,
     settle_up,
-    to_cents,
+    cost_to_cents,
 )
 
 ANA, BEN, TOM = 1, 2, 3
@@ -61,19 +61,19 @@ def test_description_is_tidied_and_checked():
 
 @pytest.mark.parametrize("raw, cents", [(18.4, 1840), (0.01, 1), (7, 700), ("12.50", 1250), (10000, MAX_AMOUNT_CENTS)])
 def test_amount_is_turned_into_cents(raw, cents):
-    assert to_cents(raw) == cents
+    assert cost_to_cents(raw) == cents
 
 
 @pytest.mark.parametrize("raw", [0, -5, 10000.01, 1.005, "abc", float("nan"), float("inf")])
 def test_invalid_amount_is_rejected(raw):
     with pytest.raises(ValueError):
-        to_cents(raw)
+        cost_to_cents(raw)
 
 
 def test_cents_are_shown_as_euros():
-    assert euros(1840) == "€18.40"
-    assert euros(-500) == "-€5.00"
-    assert euros(0) == "€0.00"
+    assert format_euros(1840) == "€18.40"
+    assert format_euros(-500) == "-€5.00"
+    assert format_euros(0) == "€0.00"
 
 
 # --- Splitting ---------------------------------------------------------------

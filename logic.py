@@ -1,5 +1,7 @@
 """The rules of the app. Pure functions only: no Streamlit and no database here."""
 
+import csv
+import io
 import secrets
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -132,10 +134,63 @@ def leaderboard(members: dict[int, str], done: list[tuple[int, int]]) -> list[tu
     return sorted(ranking, key=lambda item: (-item[1], item[0]))
 
 
+# --- Fund --------------------------------------------------------------------
+
+MAX_FUND_AMOUNT = 1000  # euros per entry
+MAX_DESCRIPTION_LENGTH = 40
+
+
+def to_cents(raw: float) -> int:
+    """Return a fund amount as whole cents, or raise ValueError if it is not allowed."""
+    amount = clean_amount(raw)
+    if amount > MAX_FUND_AMOUNT:
+        raise ValueError(f"Amount can be at most €{MAX_FUND_AMOUNT}.")
+    return round(amount * 100)
+
+
+def format_euros(cents: int) -> str:
+    """Show cents as euros, for example 640 -> '€6.40' and -2400 -> '-€24.00'."""
+    sign = "-" if cents < 0 else ""
+    return f"{sign}€{abs(cents) // 100}.{abs(cents) % 100:02d}"
+
+
+def clean_description(raw: str) -> str:
+    """Return a tidy description of a fund entry, or raise ValueError if it is not allowed."""
+    text = " ".join(raw.split())
+    if not text:
+        raise ValueError("Description cannot be empty.")
+    if len(text) > MAX_DESCRIPTION_LENGTH:
+        raise ValueError(f"Description can be at most {MAX_DESCRIPTION_LENGTH} characters.")
+    return text
+
+
+def check_can_take_out(balance_cents: int, amount_cents: int) -> None:
+    """Raise ValueError if taking this amount out would make the fund go below zero."""
+    if amount_cents > balance_cents:
+        raise ValueError(f"The fund only has {format_euros(balance_cents)}. It cannot go below zero.")
+
+
+def goal_progress(balance_cents: int, goal_cents: int) -> float:
+    """Return how far the fund has come towards the goal, from 0.0 to 1.0."""
+    if goal_cents <= 0:
+        return 0.0
+    return min(max(balance_cents / goal_cents, 0.0), 1.0)
+
+
+def fund_csv(entries: list[dict]) -> str:
+    """Return the fund history as CSV text. Each entry has 'date', 'what', 'who' and 'cents'."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["date", "what", "who", "amount_eur"])
+    for entry in entries:
+        euros = format_euros(entry["cents"]).replace("€", "")
+        writer.writerow([entry["date"].isoformat(), entry["what"], entry["who"], euros])
+    return out.getvalue()
+
+
 # --- Shopping ----------------------------------------------------------------
 
 MAX_ITEM_LENGTH = 40
-MAX_DESCRIPTION_LENGTH = 40
 MAX_AMOUNT_CENTS = 1_000_000  # €10,000
 
 # Things a flat often runs out of, offered in a list so nobody has to type them.
@@ -172,12 +227,7 @@ def clean_item_name(raw: str) -> str:
     return _tidy_text(raw, "Item", MAX_ITEM_LENGTH)
 
 
-def clean_description(raw: str) -> str:
-    """Return a tidy description of a cost, or raise ValueError if it is not allowed."""
-    return _tidy_text(raw, "Description", MAX_DESCRIPTION_LENGTH)
-
-
-def to_cents(raw) -> int:
+def cost_to_cents(raw) -> int:
     """Turn an amount in euros (for example 18.4 or "12.50") into whole cents, or raise ValueError.
 
     Allowed: more than €0, at most €10,000, and at most 2 decimals.
@@ -196,14 +246,8 @@ def to_cents(raw) -> int:
     if cents <= 0:
         raise ValueError("Amount must be more than €0.")
     if cents > MAX_AMOUNT_CENTS:
-        raise ValueError(f"Amount can be at most {euros(MAX_AMOUNT_CENTS)}.")
+        raise ValueError(f"Amount can be at most {format_euros(MAX_AMOUNT_CENTS)}.")
     return cents
-
-
-def euros(cents: int) -> str:
-    """Show cents as euros, for example 1840 -> '€18.40' and -500 -> '-€5.00'."""
-    sign = "-" if cents < 0 else ""
-    return f"{sign}€{abs(cents) // 100}.{abs(cents) % 100:02d}"
 
 
 def split_cents(total: int, people: int) -> list[int]:
