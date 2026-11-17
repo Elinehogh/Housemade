@@ -29,7 +29,7 @@ def init() -> None:
         "fund": [
             {"what": "Pant from party bottles", "who": "Sara", "amount": 6.40},
             {"what": "Pant", "who": "You", "amount": 3.10},
-            {"what": "Pizza night", "who": "Tom", "amount": -24.00},
+            {"what": "Pizza night", "who": "Tom", "amount": -12.00},
             {"what": "Pant", "who": "Ana", "amount": 4.50},
         ],
         "fund_goal": ("Flat trip to Sintra", 80.0),
