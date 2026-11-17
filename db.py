@@ -14,6 +14,7 @@ from datetime import date, datetime, time
 from sqlalchemy import (
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -25,7 +26,9 @@ from sqlalchemy import (
     event,
     func,
     insert,
+    inspect,
     select,
+    text,
     update,
 )
 from sqlalchemy.engine import Engine
@@ -43,6 +46,7 @@ from logic import (
     ROLES,
     check_can_take_out,
     check_can_tick_off,
+    check_deadline,
     check_payment,
     clean_chore_name,
     clean_description,
@@ -89,6 +93,7 @@ memberships = Table(
 )
 
 # A chore belongs to one flat and is given to one member. done_at is empty until it is ticked off.
+# New columns must be nullable, so _add_missing_columns() can add them to an existing database.
 chores = Table(
     "chores",
     metadata,
@@ -98,6 +103,7 @@ chores = Table(
     Column("points", Integer, nullable=False),
     Column("assigned_to", ForeignKey("users.id"), nullable=False),
     Column("done_at", DateTime, nullable=True),
+    Column("due_on", Date, nullable=True),  # The deadline. Empty: no deadline.
     CheckConstraint(f"points BETWEEN {MIN_POINTS} AND {MAX_POINTS}", name="valid_points"),
 )
 
@@ -181,8 +187,33 @@ def engine_from_url(url: str) -> Engine:
 
 
 def create_tables(engine: Engine) -> None:
-    """Create any missing tables. Safe to run on every start."""
+    """Create any missing tables and columns. Safe to run on every start."""
     metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+def schema() -> tuple:
+    """Every table with its column names. Changes whenever a table or column is added in the code."""
+    return tuple((table.name, tuple(table.columns.keys())) for table in metadata.sorted_tables)
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Add columns that are in the code but not yet in the database, for example a new deadline column.
+
+    create_all() only makes new tables, not new columns in tables that already exist. Only empty-able
+    (nullable) columns can be added this way, so the rows already saved stay as they are.
+    """
+    inspector = inspect(engine)
+    for table in metadata.sorted_tables:
+        existing = {column["name"] for column in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in existing:
+                continue
+            if not column.nullable:
+                raise RuntimeError(f"{table.name}.{column.name} is new and not nullable, so it cannot be added.")
+            column_type = column.type.compile(dialect=engine.dialect)
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {column.name} {column_type}"))
 
 
 def get_or_create_user(engine: Engine, email: str, name: str) -> int:
@@ -276,34 +307,64 @@ def flat_members(engine: Engine, user_id: int) -> dict[int, str]:
         return {row.id: row.name for row in conn.execute(query)}
 
 
-def add_chore(engine: Engine, user_id: int, name: str, points: float, assigned_to: int) -> int:
-    """Add a chore to the user's own flat, given to one of its members, and return its id."""
+def add_chore(
+    engine: Engine,
+    user_id: int,
+    name: str,
+    points: float,
+    assigned_to: int,
+    due_on: date | None = None,
+    today: date | None = None,
+) -> int:
+    """Add a chore to the user's own flat, given to one of its members, and return its id.
+
+    due_on is the deadline, or None for no deadline.
+    """
     name = clean_chore_name(name)
     points = clean_points(points)
+    due_on = check_deadline(due_on, today or date.today())
     flat_id = _own_flat_id(engine, user_id)
     if assigned_to not in flat_members(engine, user_id):
         raise ValueError("A chore can only be given to a member of your flat.")
     with engine.begin() as conn:
-        values = dict(flat_id=flat_id, name=name, points=points, assigned_to=assigned_to)
+        values = dict(flat_id=flat_id, name=name, points=points, assigned_to=assigned_to, due_on=due_on)
+        return conn.execute(insert(chores).values(**values)).inserted_primary_key[0]
+
+
+def log_chore(engine: Engine, user_id: int, name: str, points: float, now: datetime | None = None) -> int:
+    """Save a chore the user has just done themselves ("I took out the trash"), already ticked off."""
+    name = clean_chore_name(name)
+    points = clean_points(points)
+    flat_id = _own_flat_id(engine, user_id)
+    with engine.begin() as conn:
+        values = dict(flat_id=flat_id, name=name, points=points, assigned_to=user_id, done_at=now or datetime.now())
         return conn.execute(insert(chores).values(**values)).inserted_primary_key[0]
 
 
 def list_chores(engine: Engine, user_id: int) -> list[dict]:
-    """Return the chores of the user's own flat: open ones first, then the oldest first."""
+    """Return the chores of the user's own flat.
+
+    Open chores first, by deadline (soonest first, no deadline last). Then done chores, newest first.
+    """
     flat_id = _own_flat_id(engine, user_id)
     query = (
-        select(chores.c.id, chores.c.name, chores.c.points, chores.c.assigned_to, chores.c.done_at, users.c.name.label("who"))
+        select(
+            chores.c.id, chores.c.name, chores.c.points, chores.c.assigned_to, chores.c.done_at, chores.c.due_on,
+            users.c.name.label("who"),
+        )
         .join(users, users.c.id == chores.c.assigned_to)
         .where(chores.c.flat_id == flat_id)
-        .order_by(chores.c.done_at.is_not(None), chores.c.id)
+        .order_by(
+            chores.c.done_at.is_not(None),
+            chores.c.due_on.is_(None),
+            chores.c.due_on,
+            chores.c.done_at.desc(),
+            chores.c.id,
+        )
     )
     with engine.connect() as conn:
         rows = conn.execute(query).mappings().all()
-    return [
-        {"id": r["id"], "name": r["name"], "points": r["points"], "assigned_to": r["assigned_to"],
-         "who": r["who"], "done": r["done_at"] is not None}
-        for r in rows
-    ]
+    return [{**row, "done": row["done_at"] is not None} for row in rows]
 
 
 def tick_off_chore(engine: Engine, user_id: int, chore_id: int, now: datetime | None = None) -> None:

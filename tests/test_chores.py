@@ -1,6 +1,6 @@
 """Tests for the chore rules in logic.py. See specs/chores.md."""
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -11,6 +11,9 @@ from logic import (
     MAX_POINTS,
     MIN_POINTS,
     check_can_tick_off,
+    check_deadline,
+    deadline_status,
+    done_before_this_week,
     clean_chore_name,
     clean_points,
     leaderboard,
@@ -147,3 +150,42 @@ def test_suggested_points_ignore_case_and_spaces():
 @pytest.mark.parametrize("name", ["Feed the cat", "", None])
 def test_own_chore_starts_at_default_points(name):
     assert suggested_points(name) == DEFAULT_POINTS
+
+
+# --- Deadlines and history ---------------------------------------------------
+
+WEDNESDAY = date(2026, 11, 18)
+
+
+def test_no_deadline_is_allowed():
+    assert check_deadline(None, WEDNESDAY) is None
+
+
+def test_deadline_today_or_later_is_accepted():
+    assert check_deadline(WEDNESDAY, WEDNESDAY) == WEDNESDAY
+    assert check_deadline(date(2026, 11, 30), WEDNESDAY) == date(2026, 11, 30)
+
+
+def test_deadline_in_the_past_is_rejected():
+    with pytest.raises(ValueError):
+        check_deadline(date(2026, 11, 17), WEDNESDAY)
+
+
+@pytest.mark.parametrize(
+    "due_on, status",
+    [(date(2026, 11, 17), "overdue"), (WEDNESDAY, "today"), (date(2026, 11, 19), None), (None, None)],
+)
+def test_deadline_status(due_on, status):
+    assert deadline_status(due_on, WEDNESDAY) == status
+
+
+@pytest.mark.parametrize(
+    "done_at, before",
+    [
+        (datetime(2026, 11, 15, 23, 59), True),  # Sunday last week
+        (datetime(2026, 11, 16, 0, 0), False),  # Monday this week
+        (datetime(2026, 11, 18, 9, 0), False),
+    ],
+)
+def test_done_before_this_week(done_at, before):
+    assert done_before_this_week(done_at, WEDNESDAY) is before

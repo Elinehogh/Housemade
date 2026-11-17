@@ -3,7 +3,7 @@
 import csv
 import io
 import secrets
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 MAX_NAME_LENGTH = 30
@@ -147,6 +147,25 @@ def check_can_tick_off(assigned_to: int, is_done: bool, user_id: int) -> None:
 def week_start(day: date) -> date:
     """Return the Monday of the week that this day is in."""
     return day - timedelta(days=day.weekday())
+
+
+def check_deadline(due_on: date | None, today: date) -> date | None:
+    """Return the deadline, or raise ValueError if it is in the past. No deadline (None) is fine."""
+    if due_on is not None and due_on < today:
+        raise ValueError("The deadline cannot be in the past.")
+    return due_on
+
+
+def deadline_status(due_on: date | None, today: date) -> str | None:
+    """Return 'overdue' if the deadline has passed, 'today' if it is today, else None."""
+    if due_on is None or due_on > today:
+        return None
+    return "today" if due_on == today else "overdue"
+
+
+def done_before_this_week(done_at: datetime, today: date) -> bool:
+    """True if a chore was done before Monday of this week, so it belongs in the history."""
+    return done_at.date() < week_start(today)
 
 
 def leaderboard(members: dict[int, str], done: list[tuple[int, int]]) -> list[tuple[str, int]]:

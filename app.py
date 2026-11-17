@@ -21,11 +21,11 @@ def get_engine():
 
 
 @st.cache_resource
-def make_tables(_engine, table_names: tuple[str, ...]) -> None:
-    """Create missing tables once per set of tables.
+def make_tables(_engine, schema: tuple) -> None:
+    """Create missing tables and columns once per version of the tables.
 
     Streamlit Cloud keeps the app running when new code is merged, so get_engine() is not run again.
-    Because the table names are part of the cache key, a newly added table is created right away.
+    Because every table and column name is part of the cache key, a new table or column is added right away.
     """
     db.create_tables(_engine)
 
@@ -43,7 +43,7 @@ st.caption(TAGLINE)
 
 if login_is_set_up():
     engine = get_engine()
-    make_tables(engine, tuple(sorted(db.metadata.tables)))
+    make_tables(engine, db.schema())
     if engine.dialect.name == "sqlite":
         st.warning("Using a local test database: data is not shared and may be lost. "
                    "Set DATABASE_URL in the secrets to use the real database.")
