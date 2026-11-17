@@ -3,7 +3,7 @@
 import csv
 import io
 import secrets
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 MAX_NAME_LENGTH = 30
@@ -85,6 +85,26 @@ def clean_invite_code(raw: str) -> str:
 MAX_CHORE_LENGTH = 40
 MIN_POINTS = 1
 MAX_POINTS = 10
+DEFAULT_POINTS = 2
+
+# Chores most flats have, with suggested points: bigger jobs give more points.
+COMMON_CHORES = {
+    "Clean the bathroom": 5,
+    "Clean the kitchen": 4,
+    "Vacuum": 3,
+    "Mop the floors": 3,
+    "Do the dishes": 2,
+    "Take out the trash": 1,
+    "Take out the recycling": 1,
+    "Return bottles and cans": 2,
+    "Wipe the kitchen counters": 1,
+    "Clean the fridge": 3,
+    "Clean the oven": 5,
+    "Dust the shelves": 2,
+    "Clean the windows": 4,
+    "Change the towels": 1,
+    "Water the plants": 1,
+}
 
 
 def clean_chore_name(raw: str) -> str:
@@ -107,6 +127,15 @@ def clean_points(raw: float) -> int:
     return points
 
 
+def suggested_points(name: str | None) -> int:
+    """Return the suggested points for a chore: from COMMON_CHORES if it is one, else DEFAULT_POINTS."""
+    wanted = " ".join((name or "").split()).lower()
+    for chore, points in COMMON_CHORES.items():
+        if chore.lower() == wanted:
+            return points
+    return DEFAULT_POINTS
+
+
 def check_can_tick_off(assigned_to: int, is_done: bool, user_id: int) -> None:
     """Raise ValueError unless this user may tick off this chore now."""
     if assigned_to != user_id:
@@ -118,6 +147,25 @@ def check_can_tick_off(assigned_to: int, is_done: bool, user_id: int) -> None:
 def week_start(day: date) -> date:
     """Return the Monday of the week that this day is in."""
     return day - timedelta(days=day.weekday())
+
+
+def check_deadline(due_on: date | None, today: date) -> date | None:
+    """Return the deadline, or raise ValueError if it is in the past. No deadline (None) is fine."""
+    if due_on is not None and due_on < today:
+        raise ValueError("The deadline cannot be in the past.")
+    return due_on
+
+
+def deadline_status(due_on: date | None, today: date) -> str | None:
+    """Return 'overdue' if the deadline has passed, 'today' if it is today, else None."""
+    if due_on is None or due_on > today:
+        return None
+    return "today" if due_on == today else "overdue"
+
+
+def done_before_this_week(done_at: datetime, today: date) -> bool:
+    """True if a chore was done before Monday of this week, so it belongs in the history."""
+    return done_at.date() < week_start(today)
 
 
 def leaderboard(members: dict[int, str], done: list[tuple[int, int]]) -> list[tuple[str, int]]:
