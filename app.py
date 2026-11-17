@@ -87,6 +87,7 @@ if login_is_set_up():
 else:
     st.info("**Preview with sample data.** Login is not set up yet, and nothing you do here is saved.")
     flat_name = "Demo flat"
+    engine = user_id = None
     members = [{"name": name, "role": "admin" if name == "You" else "member"} for name in demo_data.MEMBERS]
     invite_code = "K7QX2M"
 
@@ -108,7 +109,7 @@ with home_tab:
         st.write(f"- {member['name']}{badge}")
 
 with chores_tab:
-    chores.show()
+    chores.show(engine, user_id)
 with shopping_tab:
     shopping.show()
 with fund_tab:

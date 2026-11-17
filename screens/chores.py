@@ -1,9 +1,58 @@
-"""Chores: who does what this week, ticking off, and the points leaderboard."""
+"""Chores: who does what, ticking off, and this week's points leaderboard."""
 
 import streamlit as st
 
+import db
+from logic import MAX_POINTS, MIN_POINTS
 
-def show() -> None:
+MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+
+def show(engine=None, user_id: int | None = None) -> None:
+    """Show the chores of the user's flat. Without a login (preview), show the sample data."""
+    if engine is None:
+        show_demo()
+        return
+
+    st.subheader("🧹 Chores")
+    chores = db.list_chores(engine, user_id)
+    if not chores:
+        st.caption("No chores yet. Add the first one below.")
+    for chore in chores:
+        label = f"{chore['name']} · {chore['who']} · {chore['points']} pts"
+        mine = chore["assigned_to"] == user_id
+        # A new key once the chore is done, so Streamlit draws a fresh, ticked box.
+        key = f"chore_{chore['id']}_{'done' if chore['done'] else 'open'}"
+        ticked = st.checkbox(label, value=chore["done"], key=key, disabled=chore["done"] or not mine)
+        if ticked and not chore["done"]:
+            try:
+                db.tick_off_chore(engine, user_id, chore["id"])
+                st.rerun()
+            except ValueError as error:
+                st.error(str(error))
+    st.caption("You can only tick off chores that are given to you.")
+
+    members = db.flat_members(engine, user_id)
+    with st.form("add_chore", clear_on_submit=True):
+        st.write("**Add a chore**")
+        name = st.text_input("Chore", placeholder="Clean bathroom")
+        points = st.number_input("Points", min_value=MIN_POINTS, max_value=MAX_POINTS, value=MIN_POINTS, step=1)
+        who = st.selectbox("Who should do it?", list(members), format_func=members.get)
+        if st.form_submit_button("Add chore"):
+            try:
+                db.add_chore(engine, user_id, name, points, who)
+                st.rerun()
+            except ValueError as error:
+                st.error(str(error))
+
+    st.subheader("🏆 Leaderboard this week")
+    for place, (name, points) in enumerate(db.chores_leaderboard(engine, user_id), start=1):
+        st.write(f"{MEDALS.get(place, '  ')} **{name}**: {points} points")
+    st.caption("This week's winner picks the next flat activity.")
+
+
+def show_demo() -> None:
+    """The preview with sample data from screens/demo_data.py. Nothing is saved."""
     demo = st.session_state.demo
     st.subheader("🧹 Chores this week")
 
@@ -18,6 +67,5 @@ def show() -> None:
     st.subheader("🏆 Leaderboard")
     ranking = sorted(demo["points"].items(), key=lambda item: item[1], reverse=True)
     for place, (name, points) in enumerate(ranking, start=1):
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(place, "  ")
-        st.write(f"{medal} **{name}**: {points} points")
+        st.write(f"{MEDALS.get(place, '  ')} **{name}**: {points} points")
     st.caption("This week's winner picks the next flat activity.")
