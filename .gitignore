@@ -223,3 +223,6 @@ __marimo__/
 *.db
 *.sqlite3
 .streamlit/secrets.toml
+
+# macOS folder settings
+.DS_Store
