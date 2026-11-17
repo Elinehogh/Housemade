@@ -5,6 +5,8 @@ Introduction to Programming, Nova SBE 2026/27.
 
 **Deployed app:** (https://housemade.streamlit.app/)
 
+**Privacy policy:** [PRIVACY.md](PRIVACY.md)
+
 ## Team
 
 | Name | Student number |
