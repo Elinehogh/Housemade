@@ -46,7 +46,8 @@ if login_is_set_up():
         st.button("Log in with Google", type="primary", on_click=st.login)
         st.stop()
 
-    user_id = db.get_or_create_user(engine, st.user.email, display_name(st.user.get("name"), st.user.email))
+    me = display_name(st.user.get("name"), st.user.email)
+    user_id = db.get_or_create_user(engine, st.user.email, me)
 
     with st.sidebar:
         st.write(f"Logged in as **{st.user.get('name') or st.user.email}**")
@@ -88,6 +89,7 @@ else:
     st.info("**Preview with sample data.** Login is not set up yet, and nothing you do here is saved.")
     flat_name = "Demo flat"
     engine = user_id = None
+    me = "You"
     members = [{"name": name, "role": "admin" if name == "You" else "member"} for name in demo_data.MEMBERS]
     invite_code = "K7QX2M"
 
@@ -115,4 +117,4 @@ with shopping_tab:
 with fund_tab:
     fund.show()
 with activities_tab:
-    activities.show()
+    activities.show(me)

@@ -3,6 +3,8 @@
 Each feature replaces its part of this with real data from db.py when it is built.
 """
 
+from datetime import date, timedelta
+
 import streamlit as st
 
 MEMBERS = ["You", "Ana", "Tom", "Sara"]
@@ -12,6 +14,10 @@ def init() -> None:
     """Fill the session with sample data the first time a visitor opens the app."""
     if "demo" in st.session_state:
         return
+
+    def days_ago(n: int) -> date:
+        return date.today() - timedelta(days=n)
+
     st.session_state.demo = {
         "chores": [
             {"chore": "Dishes", "who": "You", "points": 2, "done": False},
@@ -34,9 +40,19 @@ def init() -> None:
         ],
         "fund_goal": ("Flat trip to Sintra", 80.0),
         "activities": [
-            {"activity": "Pizza & movie night", "cost": 25, "votes": 2},
-            {"activity": "Picnic in Parque Eduardo VII", "cost": 15, "votes": 3},
-            {"activity": "Day trip to Sintra", "cost": 80, "votes": 1},
-            {"activity": "Board game evening", "cost": 0, "votes": 1},
+            {"activity": "Pizza & movie night", "cost": 25},
+            {"activity": "Picnic in Parque Eduardo VII", "cost": 15},
+            {"activity": "Day trip to Sintra", "cost": 80},
+            {"activity": "Board game evening", "cost": 0},
+        ],
+        # Each member votes at most once a day, and once per activity (see logic.check_can_vote).
+        "votes": [
+            {"activity": "Picnic in Parque Eduardo VII", "who": "Tom", "day": days_ago(3)},
+            {"activity": "Picnic in Parque Eduardo VII", "who": "Ana", "day": days_ago(2)},
+            {"activity": "Pizza & movie night", "who": "Tom", "day": days_ago(2)},
+            {"activity": "Board game evening", "who": "Sara", "day": days_ago(2)},
+            {"activity": "Pizza & movie night", "who": "Ana", "day": days_ago(1)},
+            {"activity": "Picnic in Parque Eduardo VII", "who": "Sara", "day": days_ago(1)},
+            {"activity": "Day trip to Sintra", "who": "Tom", "day": days_ago(0)},
         ],
     }

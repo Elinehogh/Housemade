@@ -14,6 +14,7 @@ to do together. Team project for Introduction to Programming, Nova SBE 2026/27.
 - `app.py`: screens (Streamlit). No rules here, only showing and asking.
 - `logic.py`: rules as pure functions. No Streamlit, no database.
 - `db.py`: all reading and writing of saved data.
+- `services.py`: calls to outside services (location, weather).
 - `config.py`: app name and shared settings.
 - `tests/`: pytest tests, mainly for `logic.py`.
 - `specs/`: one spec per feature (Why, What, Out of scope, Done when).

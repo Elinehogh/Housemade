@@ -19,9 +19,16 @@ The data is stored in a Postgres database hosted by Supabase in the EU
 (Frankfurt). The app itself runs on Streamlit Community Cloud. Your login is
 kept in a cookie in your browser, so you stay logged in.
 
+## Weather and activity ideas
+
+- To show the weather, the app sends your IP address to
+  [ipinfo.io](https://ipinfo.io) to find your city, and the city's
+  coordinates to [Open-Meteo](https://open-meteo.com).
+
 ## What we do not do
 
-- We do not sell or share your data with anyone.
+- We do not sell your data or share it with anyone, apart from the
+  services above.
 - We do not use it for advertising or tracking.
 - We do not ask Google for anything other than your name and email address.
 
