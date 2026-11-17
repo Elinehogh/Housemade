@@ -111,7 +111,7 @@ with home_tab:
 with chores_tab:
     chores.show(engine, user_id)
 with shopping_tab:
-    shopping.show()
+    shopping.show(engine, user_id)
 with fund_tab:
     fund.show()
 with activities_tab:
