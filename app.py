@@ -3,7 +3,7 @@
 import streamlit as st
 
 import db
-from config import APP_NAME, LOCAL_DATABASE_URL, TAGLINE
+from config import APP_NAME, LOCAL_DATABASE_URL, REFRESH_SECONDS, TAGLINE
 from logic import display_name
 from screens import activities, chores, demo_data, fund, shopping
 
@@ -95,6 +95,19 @@ else:
 
 # --- The flat ----------------------------------------------------------------
 
+
+def show_members(members: list[dict]) -> None:
+    for member in members:
+        badge = " (admin)" if member["role"] == "admin" else ""
+        st.write(f"- {member['name']}{badge}")
+
+
+@st.fragment(run_every=REFRESH_SECONDS)
+def live_members(engine, user_id: int) -> None:
+    """The member list, asked again every few seconds so new flatmates show up (specs/live-updates.md)."""
+    show_members(db.list_members(engine, user_id))
+
+
 demo_data.init()
 
 st.header(flat_name)
@@ -106,9 +119,10 @@ with home_tab:
     if invite_code:
         st.info(f"Invite your flatmates with the code **{invite_code}**")
     st.write("**Members**")
-    for member in members:
-        badge = " (admin)" if member["role"] == "admin" else ""
-        st.write(f"- {member['name']}{badge}")
+    if engine is None:
+        show_members(members)
+    else:
+        live_members(engine, user_id)
 
 with chores_tab:
     chores.show(engine, user_id)

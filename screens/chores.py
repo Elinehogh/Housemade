@@ -3,6 +3,7 @@
 import streamlit as st
 
 import db
+from config import REFRESH_SECONDS
 from logic import MAX_POINTS, MIN_POINTS
 
 MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
@@ -15,6 +16,29 @@ def show(engine=None, user_id: int | None = None) -> None:
         return
 
     st.subheader("🧹 Chores")
+    _chore_list(engine, user_id)
+
+    members = db.flat_members(engine, user_id)
+    with st.form("add_chore", clear_on_submit=True):
+        st.write("**Add a chore**")
+        name = st.text_input("Chore", placeholder="Clean bathroom")
+        points = st.number_input("Points", min_value=MIN_POINTS, max_value=MAX_POINTS, value=MIN_POINTS, step=1)
+        who = st.selectbox("Who should do it?", list(members), format_func=members.get)
+        if st.form_submit_button("Add chore"):
+            try:
+                db.add_chore(engine, user_id, name, points, who)
+                st.rerun()
+            except ValueError as error:
+                st.error(str(error))
+
+    st.subheader("🏆 Leaderboard this week")
+    _leaderboard(engine, user_id)
+
+
+# The list and the leaderboard ask the database again every few seconds, so
+# chores added or ticked off by flatmates show up without reloading (specs/live-updates.md).
+@st.fragment(run_every=REFRESH_SECONDS)
+def _chore_list(engine, user_id: int) -> None:
     chores = db.list_chores(engine, user_id)
     if not chores:
         st.caption("No chores yet. Add the first one below.")
@@ -32,20 +56,9 @@ def show(engine=None, user_id: int | None = None) -> None:
                 st.error(str(error))
     st.caption("You can only tick off chores that are given to you.")
 
-    members = db.flat_members(engine, user_id)
-    with st.form("add_chore", clear_on_submit=True):
-        st.write("**Add a chore**")
-        name = st.text_input("Chore", placeholder="Clean bathroom")
-        points = st.number_input("Points", min_value=MIN_POINTS, max_value=MAX_POINTS, value=MIN_POINTS, step=1)
-        who = st.selectbox("Who should do it?", list(members), format_func=members.get)
-        if st.form_submit_button("Add chore"):
-            try:
-                db.add_chore(engine, user_id, name, points, who)
-                st.rerun()
-            except ValueError as error:
-                st.error(str(error))
 
-    st.subheader("🏆 Leaderboard this week")
+@st.fragment(run_every=REFRESH_SECONDS)
+def _leaderboard(engine, user_id: int) -> None:
     for place, (name, points) in enumerate(db.chores_leaderboard(engine, user_id), start=1):
         st.write(f"{MEDALS.get(place, '  ')} **{name}**: {points} points")
     st.caption("This week's winner picks the next flat activity.")
