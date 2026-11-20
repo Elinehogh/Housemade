@@ -28,7 +28,7 @@ understand what Housemade is in a few seconds.
 - Every member has an avatar: an emoji (from a fixed list of 16) on a
   coloured background (from a fixed list of 7 colours). Right after their
   first login, before creating or joining a flat, a member picks their
-  avatar. They can change it later from the sidebar.
+  avatar. They can change it later from the top of the Flat tab, or from the sidebar.
 - The avatar is shown next to the member's name in the sidebar, the member
   list, the chores leaderboard and who owes what. A member who has not picked
   one gets a neutral default.

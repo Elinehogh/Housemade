@@ -122,7 +122,7 @@ home_tab, chores_tab, shopping_tab, fund_tab, activities_tab = st.tabs(
 )
 
 with home_tab:
-    home.show(engine, user_id, invite_code)
+    home.show(engine, user_id, invite_code, me)
 with chores_tab:
     chores.show(engine, user_id)
 with shopping_tab:

@@ -6,19 +6,32 @@ import streamlit as st
 
 import db
 from config import REFRESH_SECONDS
-from logic import deadline_status, format_euros, goal_progress, my_chores_summary
-from screens.avatar import with_name
+from logic import avatar_label, deadline_status, format_euros, goal_progress, my_chores_summary
+from screens.avatar import picker, with_name
 from screens.demo_data import MEMBERS
 
 
-def show(engine, user_id: int, invite_code: str | None) -> None:
+def show(engine, user_id: int, invite_code: str | None, me: str = "You") -> None:
     """Show the overview of the user's flat. Without a login (engine is None), show the sample data."""
     if engine is None:
         show_demo(invite_code)
         return
+    _greeting(engine, user_id, me)
     _overview(engine, user_id)
     _invite(invite_code)
     _members(engine, user_id)
+
+
+def _greeting(engine, user_id: int, me: str) -> None:
+    """The member's avatar and name, with a button to change the avatar right where they see it.
+
+    Kept outside the refreshing overview, so the open avatar picker does not close every few seconds.
+    """
+    face, hello, change = st.columns([1, 5, 3], vertical_alignment="center")
+    face.markdown(f"## {avatar_label(*(db.get_avatar(engine, user_id) or (None, None)))}")
+    hello.markdown(f"### Hi {me}!")
+    with change.popover("Change avatar", icon=":material/face:"):
+        picker(engine, user_id, key="home_avatar")
 
 
 # The numbers ask the database again every few seconds, like the other shared lists (specs/live-updates.md).
@@ -34,7 +47,7 @@ def _overview(engine, user_id: int) -> None:
 
 
 def _show_numbers(summary: dict, mine: int, fund: int, goal: dict | None, to_buy: int, today: date) -> None:
-    st.subheader("👋 Your overview")
+    st.subheader("Your overview")
     chores_col, points_col, money_col, fund_col = st.columns(4)
     overdue = f"{summary['overdue']} overdue" if summary["overdue"] else None
     chores_col.metric("Your chores", summary["open"], delta=overdue, delta_color="inverse", border=True)
