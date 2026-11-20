@@ -58,6 +58,30 @@ def balances(members: list[str], payments: list[tuple[str, float]]) -> dict[str,
     return {name: round(paid[name] - share, 2) for name in members}
 
 
+# --- Avatars (specs/design.md) -------------------------------------------------
+
+AVATAR_EMOJIS = ("🦊", "🐻", "🐼", "🐨", "🐸", "🐙", "🦄", "🐱", "🐶", "🐧", "🦉", "🐢", "🌻", "🌵", "🍕", "🎸")
+# Streamlit's own background colours, used as ":orange-background[🦊]" in markdown (no HTML needed).
+AVATAR_COLORS = ("red", "orange", "yellow", "green", "blue", "violet", "gray")
+DEFAULT_AVATAR = ("🙂", "gray")
+
+
+def check_avatar(emoji: str, color: str) -> tuple[str, str]:
+    """Return the avatar, or raise ValueError unless both the emoji and the colour are from the lists."""
+    if emoji not in AVATAR_EMOJIS:
+        raise ValueError("Pick one of the emojis in the list.")
+    if color not in AVATAR_COLORS:
+        raise ValueError("Pick one of the colours in the list.")
+    return emoji, color
+
+
+def avatar_label(emoji: str | None, color: str | None) -> str:
+    """The avatar as Streamlit markdown: the emoji on its colour, or the default if none is picked."""
+    if emoji is None or color is None:
+        emoji, color = DEFAULT_AVATAR
+    return f":{color}-background[{emoji}]"
+
+
 def clean_flat_name(raw: str) -> str:
     """Return a tidy flat name, or raise ValueError if it is not allowed."""
     name = " ".join(raw.split())

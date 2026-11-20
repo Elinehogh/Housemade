@@ -4,8 +4,8 @@ import streamlit as st
 
 import db
 from config import APP_NAME, LOCAL_DATABASE_URL
-from logic import display_name
-from screens import activities, chores, demo_data, fund, home, shopping, welcome
+from logic import avatar_label, display_name
+from screens import activities, avatar, chores, demo_data, fund, home, shopping, welcome
 
 st.set_page_config(page_title=APP_NAME, page_icon="🏠")
 
@@ -56,8 +56,20 @@ if login_is_set_up():
     me = display_name(st.user.get("name"), st.user.email)
     user_id = db.get_or_create_user(engine, st.user.email, me)
 
+    # --- Avatar: picked once, right after the first login ----------------------
+
+    my_avatar = db.get_avatar(engine, user_id)
+    if my_avatar is None:
+        st.subheader(f"👋 Hi {me}! Pick your avatar")
+        st.caption("Your flatmates will see it next to your name. You can change it later.")
+        avatar.picker(engine, user_id, key="first_avatar")
+        st.stop()
+
     with st.sidebar:
+        st.markdown(f"## {avatar_label(*my_avatar)}")
         st.write(f"Logged in as **{st.user.get('name') or st.user.email}**")
+        with st.popover("Change avatar", icon=":material/face:"):
+            avatar.picker(engine, user_id, key="sidebar_avatar")
         st.button("Log out", icon=":material/logout:", on_click=st.logout)
 
     # --- Create or join a flat -----------------------------------------------

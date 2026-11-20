@@ -7,6 +7,7 @@ import streamlit as st
 import db
 from config import REFRESH_SECONDS
 from logic import deadline_status, format_euros, goal_progress, my_chores_summary
+from screens.avatar import with_name
 from screens.demo_data import MEMBERS
 
 
@@ -74,12 +75,14 @@ def _invite(invite_code: str | None) -> None:
 @st.fragment(run_every=REFRESH_SECONDS)
 def _members(engine, user_id: int) -> None:
     """The member list, asked again every few seconds so new flatmates show up (specs/live-updates.md)."""
-    _show_members(db.list_members(engine, user_id))
+    _show_members(db.list_members(engine, user_id), db.flat_avatars(engine, user_id))
 
 
-def _show_members(members: list[dict]) -> None:
+def _show_members(members: list[dict], avatars: dict) -> None:
     st.markdown("**Members**")
-    st.write("  ".join(f"`{m['name']}{' · admin' if m['role'] == 'admin' else ''}`" for m in members))
+    for member in members:
+        admin = " · admin" if member["role"] == "admin" else ""
+        st.markdown(f"{with_name(member['name'], avatars)}{admin}")
 
 
 def show_demo(invite_code: str | None) -> None:
@@ -98,4 +101,5 @@ def show_demo(invite_code: str | None) -> None:
     goal = {"name": goal_name, "cents": round(goal_euros * 100)}
     _show_numbers(summary, round((paid - share) * 100), fund, goal, to_buy, today)
     _invite(invite_code)
-    _show_members([{"name": name, "role": "admin" if name == "You" else "member"} for name in MEMBERS])
+    demo_avatars = dict(zip(MEMBERS, [("🦊", "orange"), ("🐼", "green"), ("🎸", "violet"), ("🌻", "yellow")]))
+    _show_members([{"name": name, "role": "admin" if name == "You" else "member"} for name in MEMBERS], demo_avatars)

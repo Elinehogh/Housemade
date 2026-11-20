@@ -5,6 +5,7 @@ from datetime import date
 import streamlit as st
 
 import db
+from screens.avatar import with_name
 from config import REFRESH_SECONDS
 from logic import (
     COMMON_CHORES,
@@ -71,8 +72,9 @@ def _done_and_leaderboard(engine, user_id: int) -> None:
         st.write(f"~~{chore['name']}~~ · {chore['who']} · {chore['points']} pts · {_when(chore['done_at'])}")
 
     st.subheader("🏆 Leaderboard this week")
+    avatars = db.flat_avatars(engine, user_id)
     for place, (name, points) in enumerate(db.chores_leaderboard(engine, user_id), start=1):
-        st.write(f"{MEDALS.get(place, '  ')} **{name}**: {points} points")
+        st.markdown(f"{MEDALS.get(place, '  ')} {with_name(name, avatars)}: {points} points")
     st.caption("This week's winner picks the next flat activity.")
 
     if history:
