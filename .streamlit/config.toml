@@ -4,6 +4,7 @@
 [theme]
 font = "Nunito:https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap, sans-serif"
 headingFontWeights = [800, 700, 700, 700, 600, 600]
+baseFontSize = 18                    # Streamlit uses 16; Nunito reads small, so a bit bigger
 baseRadius = "0.75rem"
 buttonRadius = "full"
 showSidebarBorder = false
