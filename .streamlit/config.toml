@@ -1,3 +1,25 @@
+# Housemade's look: a warm theme, with a matching dark version for devices in dark mode.
+# See specs/design.md. Colours were checked for readable contrast in both modes.
+
 [theme]
-# Background of the main page. Any hex colour works, e.g. "#1E3A8A" for dark blue.
-backgroundColor = "#CFE2FF"
+font = "Nunito:https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap, sans-serif"
+headingFontWeights = [800, 700, 700, 700, 600, 600]
+baseRadius = "0.75rem"
+buttonRadius = "full"
+showSidebarBorder = false
+
+[theme.light]
+primaryColor = "#C0563E"             # coral: buttons, checkboxes, links
+backgroundColor = "#FFF8F0"          # cream page
+secondaryBackgroundColor = "#F4E9DD" # cards, inputs and the sidebar
+textColor = "#3D405B"                # dark slate
+borderColor = "#E8D8C6"
+linkColor = "#C0563E"
+
+[theme.dark]
+primaryColor = "#D0654B"             # a bit darker, so white button text stays readable
+backgroundColor = "#1E1A18"          # warm, not pure black
+secondaryBackgroundColor = "#2B2522"
+textColor = "#F3ECE4"
+borderColor = "#3D3430"
+linkColor = "#F08A6C"

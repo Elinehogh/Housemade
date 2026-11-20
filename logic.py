@@ -169,6 +169,26 @@ def done_before_this_week(done_at: datetime, today: date) -> bool:
     return done_at.date() < week_start(today)
 
 
+def my_chores_summary(chores: list[dict], user_id: int, today: date, next_count: int = 3) -> dict:
+    """Numbers for the Flat tab overview: one member's open and overdue chores, points this week,
+    and their next chores (soonest deadline first, chores without a deadline last).
+
+    chores are dicts with 'assigned_to', 'points', 'done', 'done_at' and 'due_on', as from db.list_chores.
+    """
+    mine = [chore for chore in chores if chore["assigned_to"] == user_id]
+    open_chores = [chore for chore in mine if not chore["done"]]
+    points = sum(
+        chore["points"] for chore in mine if chore["done"] and not done_before_this_week(chore["done_at"], today)
+    )
+    soonest_first = sorted(open_chores, key=lambda chore: (chore["due_on"] is None, chore["due_on"] or today))
+    return {
+        "open": len(open_chores),
+        "overdue": sum(deadline_status(chore["due_on"], today) == "overdue" for chore in open_chores),
+        "points": points,
+        "next": soonest_first[:next_count],
+    }
+
+
 def leaderboard(members: dict[int, str], done: list[tuple[int, int]]) -> list[tuple[str, int]]:
     """Rank members by points: highest first, then by name. Members without points get 0.
 

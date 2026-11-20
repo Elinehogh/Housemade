@@ -501,7 +501,7 @@ def confirm_payment(engine: Engine, user_id: int, from_user: int, amount, now: d
 def money_overview(engine: Engine, user_id: int) -> dict:
     """Return the costs, payments, balances and settle-up suggestions of the user's own flat.
 
-    balances: [(name, cents)] by name. settle_up: [(payer name, receiver name, cents)].
+    mine: the user's own balance in cents. balances: [(name, cents)] by name. settle_up: [(payer name, receiver name, cents)].
     expenses and payments: newest first.
     """
     flat_id = _own_flat_id(engine, user_id)
@@ -527,6 +527,7 @@ def money_overview(engine: Engine, user_id: int) -> dict:
         [(row["from_user"], row["to_user"], row["amount_cents"]) for row in payment_rows],
     )
     return {
+        "mine": balance[user_id],
         "balances": [(members[member], balance[member]) for member in members],
         "settle_up": [(members[a], members[b], cents) for a, b, cents in settle_up(balance)],
         "expenses": [

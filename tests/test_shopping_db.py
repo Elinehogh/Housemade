@@ -193,3 +193,9 @@ def test_invalid_payment_is_not_saved(engine, anna, ben, amount):
     with pytest.raises(ValueError):
         db.confirm_payment(engine, anna, ben, amount)
     assert db.money_overview(engine, anna)["payments"] == []
+
+
+def test_overview_includes_your_own_balance(engine, anna, ben):
+    db.add_expense(engine, anna, 30, "Cleaning stuff")
+    assert db.money_overview(engine, anna)["mine"] == 1500
+    assert db.money_overview(engine, ben)["mine"] == -1500
