@@ -14,6 +14,7 @@ to do together. Team project for Introduction to Programming, Nova SBE 2026/27.
 - `app.py`: screens (Streamlit). No rules here, only showing and asking.
 - `logic.py`: rules as pure functions. No Streamlit, no database.
 - `db.py`: all reading and writing of saved data.
+- `services.py`: calls to outside services (location, weather).
 - `config.py`: app name and shared settings.
 - `tests/`: pytest tests, mainly for `logic.py`.
 - `specs/`: one spec per feature (Why, What, Out of scope, Done when).
@@ -28,6 +29,9 @@ to do together. Team project for Introduction to Programming, Nova SBE 2026/27.
 - All database code lives in `db.py` and goes through SQLAlchemy, so the same
   functions work on SQLite and Postgres.
 - Tests use a fresh in-memory SQLite database (`sqlite://`), never the real one.
+- Shared data on screen refreshes itself: put the part that reads from the
+  database in a function with `@st.fragment(run_every=REFRESH_SECONDS)`,
+  and keep forms outside it (see `specs/live-updates.md`).
 - Access control: functions that touch a flat's data take the user's id and
   look up their own flat. Never accept a flat id from the screen.
 - One person owns changes to the tables in `db.py`. Agree with them before

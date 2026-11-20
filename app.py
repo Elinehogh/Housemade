@@ -3,7 +3,7 @@
 import streamlit as st
 
 import db
-from config import APP_NAME, LOCAL_DATABASE_URL, TAGLINE
+from config import APP_NAME, LOCAL_DATABASE_URL, REFRESH_SECONDS, TAGLINE
 from logic import display_name
 from screens import activities, chores, demo_data, fund, shopping
 
@@ -55,7 +55,8 @@ if login_is_set_up():
         st.button("Log in with Google", type="primary", on_click=st.login)
         st.stop()
 
-    user_id = db.get_or_create_user(engine, st.user.email, display_name(st.user.get("name"), st.user.email))
+    me = display_name(st.user.get("name"), st.user.email)
+    user_id = db.get_or_create_user(engine, st.user.email, me)
 
     with st.sidebar:
         st.write(f"Logged in as **{st.user.get('name') or st.user.email}**")
@@ -97,10 +98,24 @@ else:
     st.info("**Preview with sample data.** Login is not set up yet, and nothing you do here is saved.")
     flat_name = "Demo flat"
     engine = user_id = None
+    me = "You"
     members = [{"name": name, "role": "admin" if name == "You" else "member"} for name in demo_data.MEMBERS]
     invite_code = "K7QX2M"
 
 # --- The flat ----------------------------------------------------------------
+
+
+def show_members(members: list[dict]) -> None:
+    for member in members:
+        badge = " (admin)" if member["role"] == "admin" else ""
+        st.write(f"- {member['name']}{badge}")
+
+
+@st.fragment(run_every=REFRESH_SECONDS)
+def live_members(engine, user_id: int) -> None:
+    """The member list, asked again every few seconds so new flatmates show up (specs/live-updates.md)."""
+    show_members(db.list_members(engine, user_id))
+
 
 demo_data.init()
 
@@ -113,9 +128,10 @@ with home_tab:
     if invite_code:
         st.info(f"Invite your flatmates with the code **{invite_code}**")
     st.write("**Members**")
-    for member in members:
-        badge = " (admin)" if member["role"] == "admin" else ""
-        st.write(f"- {member['name']}{badge}")
+    if engine is None:
+        show_members(members)
+    else:
+        live_members(engine, user_id)
 
 with chores_tab:
     chores.show(engine, user_id)
@@ -124,4 +140,4 @@ with shopping_tab:
 with fund_tab:
     fund.show(engine, user_id)
 with activities_tab:
-    activities.show()
+    activities.show(me)

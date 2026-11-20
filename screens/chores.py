@@ -5,6 +5,7 @@ from datetime import date
 import streamlit as st
 
 import db
+from config import REFRESH_SECONDS
 from logic import (
     COMMON_CHORES,
     MAX_POINTS,
@@ -27,11 +28,18 @@ def show(engine=None, user_id: int | None = None) -> None:
         show_demo()
         return
 
+    _to_do(engine, user_id)
+    show_add_form(engine, user_id, date.today())
+    _done_and_leaderboard(engine, user_id)
+
+
+# The lists and the leaderboard ask the database again every few seconds, so chores added or
+# ticked off by flatmates show up without reloading (specs/live-updates.md). The add form stays
+# outside, so what someone is typing is not lost.
+@st.fragment(run_every=REFRESH_SECONDS)
+def _to_do(engine, user_id: int) -> None:
     today = date.today()
-    chores = db.list_chores(engine, user_id)
-    open_chores = [c for c in chores if not c["done"]]
-    this_week = [c for c in chores if c["done"] and not done_before_this_week(c["done_at"], today)]
-    history = [c for c in chores if c["done"] and done_before_this_week(c["done_at"], today)]
+    open_chores = [c for c in db.list_chores(engine, user_id) if not c["done"]]
 
     st.subheader("🧹 To do")
     if not open_chores:
@@ -48,7 +56,13 @@ def show(engine=None, user_id: int | None = None) -> None:
     if open_chores:
         st.caption("You can only tick off chores that are given to you.")
 
-    show_add_form(engine, user_id, today)
+
+@st.fragment(run_every=REFRESH_SECONDS)
+def _done_and_leaderboard(engine, user_id: int) -> None:
+    today = date.today()
+    done = [c for c in db.list_chores(engine, user_id) if c["done"]]
+    this_week = [c for c in done if not done_before_this_week(c["done_at"], today)]
+    history = [c for c in done if done_before_this_week(c["done_at"], today)]
 
     st.subheader("✅ Done this week")
     if not this_week:
