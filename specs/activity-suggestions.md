@@ -33,8 +33,6 @@ things to do as a group, so nobody has to come up with ideas.
 - Choosing another city by hand.
 - Forecasts for later days.
 - Checking who is free.
-- Saving ideas or votes in the database (activities still use the sample
-  data).
 
 ## Done when
 

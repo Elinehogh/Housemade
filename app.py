@@ -5,9 +5,10 @@ import streamlit as st
 import db
 from config import APP_NAME, LOCAL_DATABASE_URL
 from logic import avatar_label, display_name
-from screens import activities, avatar, chores, demo_data, fund, home, house_rules, shopping, welcome
+from screens import activities, avatar, chores, demo_data, fund, home, house_rules, shopping, sky, welcome
 
 st.set_page_config(page_title=APP_NAME, page_icon="🏠")
+sky.apply()
 
 
 @st.cache_resource
@@ -38,7 +39,7 @@ def login_is_set_up() -> bool:
         return False
 
 
-st.title(f"🏠 {APP_NAME}")
+st.title(APP_NAME)
 
 if login_is_set_up():
     engine = get_engine()
@@ -117,19 +118,26 @@ else:
 demo_data.init()
 
 st.caption(f"Your flat: **{flat_name}**")
-home_tab, chores_tab, shopping_tab, fund_tab, activities_tab, rules_tab = st.tabs(
-    ["🏠 Flat", "🧹 Chores", "🛒 Shopping", "🫙 Fund", "🎉 Activities", "📜 House rules"]
+# Only the open tab is drawn. The Today tab can open another one through st.session_state.view.
+today_tab, chores_tab, shopping_tab, fund_tab, activities_tab, rules_tab = st.tabs(
+    sky.VIEWS, key="view", on_change="rerun"
 )
 
-with home_tab:
-    home.show(engine, user_id, invite_code, me)
+with today_tab:
+    if today_tab.open:
+        home.show(engine, user_id, invite_code, me)
 with chores_tab:
-    chores.show(engine, user_id)
+    if chores_tab.open:
+        chores.show(engine, user_id)
 with shopping_tab:
-    shopping.show(engine, user_id)
+    if shopping_tab.open:
+        shopping.show(engine, user_id)
 with fund_tab:
-    fund.show(engine, user_id)
+    if fund_tab.open:
+        fund.show(engine, user_id)
 with activities_tab:
-    activities.show(me)
+    if activities_tab.open:
+        activities.show(engine, user_id)
 with rules_tab:
-    house_rules.show(engine, user_id)
+    if rules_tab.open:
+        house_rules.show(engine, user_id)
