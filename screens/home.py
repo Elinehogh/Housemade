@@ -22,7 +22,7 @@ from logic import (
     weather_headline,
 )
 
-from screens import activities
+from screens import activities, votes
 from screens.avatar import picker, with_name
 from screens.demo_data import MEMBERS
 from screens.sky import open_view
@@ -101,6 +101,10 @@ def _weather_tile(engine, user_id: int | None, items: list[dict]) -> None:
 def _live_today(engine, user_id: int, invite_code: str | None) -> None:
     today = date.today()
     data = db.today_overview(engine, user_id, today)
+    votes.show(
+        engine, user_id, user_id, data["prize_options"], data["activities"],
+        data["rules_in_vote"], data["votes_needed"], today,
+    )
     _weather_tile(engine, user_id, data["activities"])
     _tiles(
         engine=engine,
@@ -263,6 +267,7 @@ def show_demo(invite_code: str | None) -> None:
     ranking = sorted(demo["points"].items(), key=lambda item: (-item[1], item[0]))
 
     items = activities.load(None, None)
+    votes.show_demo(items, today)
     _weather_tile(None, None, items)
     _tiles(
         engine=None,
