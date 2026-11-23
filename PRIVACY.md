@@ -10,8 +10,8 @@ the app stores about you and why.
   know who you are and to show your name to your flatmates. We never see or
   store your Google password.
 - **What you add in the app:** the flat you create or join, chores, shopping
-  items, payments, money in the shared fund and activities. Only the members
-  of your own flat can see this.
+  items, payments, money in the shared fund, activities and house rules with
+  the votes on them. Only the members of your own flat can see this.
 
 ## Where it is stored
 

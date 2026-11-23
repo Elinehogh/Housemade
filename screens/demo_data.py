@@ -39,6 +39,11 @@ def init() -> None:
             {"what": "Pant", "who": "Ana", "amount": 4.50},
         ],
         "fund_goal": ("Flat trip to Sintra", 80.0),
+        "house_rules": [
+            {"id": 1, "text": "Quiet after 23:00 on weekdays", "who": "Ana", "added": days_ago(30), "voters": []},
+            {"id": 2, "text": "Clean the kitchen right after you cook", "who": "Tom", "added": days_ago(21), "voters": ["Ana"]},
+            {"id": 3, "text": "No shoes in the living room", "who": "Sara", "added": days_ago(7), "voters": ["Tom", "Ana"]},
+        ],
         "activities": [
             {"activity": "Pizza & movie night", "cost": 25},
             {"activity": "Picnic in Parque Eduardo VII", "cost": 15},

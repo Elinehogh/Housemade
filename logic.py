@@ -541,3 +541,39 @@ def check_payment(payer: int, receiver: int, confirmed_by: int, members: list[in
         raise ValueError("You cannot pay yourself.")
     if confirmed_by != receiver:
         raise ValueError("Only the person who got the money can confirm a payment.")
+
+
+# --- House rules (specs/house-rules.md) ----------------------------------------
+
+MAX_RULE_LENGTH = 120
+
+
+def rule_key(text: str) -> str:
+    """The form used to compare rules: spaces tidied and capital letters ignored."""
+    return " ".join(text.split()).casefold()
+
+
+def clean_rule(raw: str, existing: list[str] = ()) -> str:
+    """Return a tidy house rule, or raise ValueError if it is empty, too long or already on the list."""
+    rule = _tidy_text(raw, "Rule", MAX_RULE_LENGTH)
+    if rule_key(rule) in {rule_key(other) for other in existing}:
+        raise ValueError("That rule is already on the list.")
+    return rule
+
+
+def votes_needed(members: int) -> int:
+    """How many votes are a majority: more than half of the members."""
+    if members < 1:
+        raise ValueError("A flat needs at least one member to vote.")
+    return members // 2 + 1
+
+
+def has_majority(votes: int, members: int) -> bool:
+    """True if this many votes are more than half of the members."""
+    return votes >= votes_needed(members)
+
+
+def check_can_vote_to_remove(voters: list, who) -> None:
+    """Raise ValueError if this member already voted to remove this rule: everyone votes once."""
+    if who in voters:
+        raise ValueError("You already voted to remove this rule.")
