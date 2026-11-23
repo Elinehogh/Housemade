@@ -37,6 +37,8 @@ from sqlalchemy.exc import IntegrityError
 
 from logic import (
     INVITE_CODE_LENGTH,
+    MAX_ACTIVITY_COST,
+    MAX_ACTIVITY_LENGTH,
     MAX_AMOUNT_CENTS,
     MAX_CHORE_LENGTH,
     MAX_DESCRIPTION_LENGTH,
@@ -47,11 +49,17 @@ from logic import (
     MAX_RULE_LENGTH,
     MIN_POINTS,
     ROLES,
+    activity_cost_cents,
+    activity_key,
+    check_activity_date,
+    check_can_remove_activity,
     check_can_take_out,
     check_can_tick_off,
+    check_can_vote,
     check_can_vote_to_remove,
     check_deadline,
     check_payment,
+    clean_activity_name,
     clean_chore_name,
     clean_description,
     clean_flat_name,
@@ -65,6 +73,7 @@ from logic import (
     has_majority,
     leaderboard,
     new_invite_code,
+    rank_activities,
     rule_key,
     settle_up,
     shopping_balances,
@@ -180,6 +189,34 @@ fund_goals = Table(
     Column("name", String(MAX_DESCRIPTION_LENGTH), nullable=False),
     Column("cents", Integer, nullable=False),
     CheckConstraint("cents > 0", name="positive_goal"),
+)
+
+# Things a flat can do together. name_key is the name without capitals, so a flat cannot have the same
+# activity twice. It is longer than the name because ignoring capitals can make a few letters longer.
+activities = Table(
+    "activities",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("flat_id", ForeignKey("flats.id"), nullable=False),
+    Column("name", String(MAX_ACTIVITY_LENGTH), nullable=False),
+    Column("name_key", String(MAX_ACTIVITY_LENGTH * 3), nullable=False),
+    Column("cost_cents", Integer, nullable=False),
+    Column("planned_on", Date, nullable=False),
+    Column("added_by", ForeignKey("users.id"), nullable=False),
+    Column("created_at", DateTime, nullable=False),
+    UniqueConstraint("flat_id", "name_key", name="one_activity_per_flat"),
+    CheckConstraint(f"cost_cents BETWEEN 0 AND {int(MAX_ACTIVITY_COST * 100)}", name="valid_activity_cost"),
+)
+
+# Votes on activities. The primary key allows one vote per member per activity,
+# and the unique constraint one vote per member per day. A user belongs to one flat.
+activity_votes = Table(
+    "activity_votes",
+    metadata,
+    Column("activity_id", ForeignKey("activities.id"), primary_key=True),
+    Column("user_id", ForeignKey("users.id"), primary_key=True),
+    Column("voted_on", Date, nullable=False),
+    UniqueConstraint("user_id", "voted_on", name="one_vote_per_day"),
 )
 
 # A flat's house rules. rule_key is the text without capitals, so a flat cannot have the same rule twice.
@@ -568,7 +605,8 @@ def confirm_payment(engine: Engine, user_id: int, from_user: int, amount, now: d
 def money_overview(engine: Engine, user_id: int) -> dict:
     """Return the costs, payments, balances and settle-up suggestions of the user's own flat.
 
-    mine: the user's own balance in cents. balances: [(name, cents)] by name. settle_up: [(payer name, receiver name, cents)].
+    mine: the user's own balance in cents. mine_to_pay and mine_to_get: [(name, cents)] for the user.
+    balances: [(name, cents)] by name. settle_up: [(payer name, receiver name, cents)].
     expenses and payments: newest first.
     """
     flat_id = _own_flat_id(engine, user_id)
@@ -593,10 +631,13 @@ def money_overview(engine: Engine, user_id: int) -> dict:
         [(row["paid_by"], row["amount_cents"]) for row in expense_rows],
         [(row["from_user"], row["to_user"], row["amount_cents"]) for row in payment_rows],
     )
+    transfers = settle_up(balance)
     return {
         "mine": balance[user_id],
+        "mine_to_pay": [(members[to], cents) for payer_id, to, cents in transfers if payer_id == user_id],
+        "mine_to_get": [(members[frm], cents) for frm, receiver_id, cents in transfers if receiver_id == user_id],
         "balances": [(members[member], balance[member]) for member in members],
-        "settle_up": [(members[a], members[b], cents) for a, b, cents in settle_up(balance)],
+        "settle_up": [(members[a], members[b], cents) for a, b, cents in transfers],
         "expenses": [
             {"who": r["who"], "cents": r["amount_cents"], "description": r["description"], "at": r["created_at"]}
             for r in expense_rows
@@ -760,3 +801,110 @@ def vote_to_remove(engine: Engine, user_id: int, rule_id: int) -> bool:
             return True
     except IntegrityError as error:  # The same member voted twice at the same moment.
         raise ValueError("You already voted to remove this rule.") from error
+
+
+# --- Activities (specs/activities.md) -------------------------------------------
+
+
+def add_activity(
+    engine: Engine, user_id: int, name: str, cost, planned_on: date | None,
+    today: date | None = None, now: datetime | None = None,
+) -> int:
+    """Add an activity to the user's own flat, and return its id."""
+    flat_id = _own_flat_id(engine, user_id)
+    check_activity_date(planned_on, today or date.today())
+    cost_cents = activity_cost_cents(cost)
+    try:
+        with engine.begin() as conn:
+            existing = list(conn.scalars(select(activities.c.name).where(activities.c.flat_id == flat_id)))
+            clean = clean_activity_name(name, existing)
+            values = dict(
+                flat_id=flat_id, name=clean, name_key=activity_key(clean), cost_cents=cost_cents,
+                planned_on=planned_on, added_by=user_id, created_at=now or datetime.now(),
+            )
+            return conn.execute(insert(activities).values(**values)).inserted_primary_key[0]
+    except IntegrityError as error:  # A flatmate added the same activity at the same moment.
+        raise ValueError(f"{' '.join(name.split())} is already on the list.") from error
+
+
+def list_activities(engine: Engine, user_id: int) -> list[dict]:
+    """Return the activities of the user's own flat, most votes first, each with its votes.
+
+    Each activity has 'id', 'activity' (its name), 'cost_cents', 'planned_on', 'added_by', 'who' (who added it)
+    and 'votes': [{'user_id', 'name', 'day'}] in the order they were cast.
+    """
+    flat_id = _own_flat_id(engine, user_id)
+    activities_query = (
+        select(
+            activities.c.id, activities.c.name.label("activity"), activities.c.cost_cents,
+            activities.c.planned_on, activities.c.added_by, users.c.name.label("who"),
+        )
+        .join(users, users.c.id == activities.c.added_by)
+        .where(activities.c.flat_id == flat_id)
+    )
+    votes_query = (
+        select(activity_votes.c.activity_id, activity_votes.c.user_id, activity_votes.c.voted_on, users.c.name)
+        .join(users, users.c.id == activity_votes.c.user_id)
+        .join(activities, activities.c.id == activity_votes.c.activity_id)
+        .where(activities.c.flat_id == flat_id)
+        .order_by(activity_votes.c.voted_on, users.c.name)
+    )
+    with engine.connect() as conn:
+        rows = conn.execute(activities_query).mappings().all()
+        vote_rows = conn.execute(votes_query).all()
+    items = [
+        {
+            **row,
+            "votes": [
+                {"user_id": vote.user_id, "name": vote.name, "day": vote.voted_on}
+                for vote in vote_rows if vote.activity_id == row["id"]
+            ],
+        }
+        for row in rows
+    ]
+    ranking_votes = [{"activity": item["activity"], "who": vote["user_id"]} for item in items for vote in item["votes"]]
+    return [item for item, _ in rank_activities(items, ranking_votes)]
+
+
+def vote_for_activity(engine: Engine, user_id: int, activity_id: int, today: date | None = None) -> None:
+    """Vote for an activity of the user's own flat: once per activity and once per day."""
+    flat_id = _own_flat_id(engine, user_id)
+    today = today or date.today()
+    try:
+        with engine.begin() as conn:
+            # Lock the activity, so it cannot be removed while this vote is being saved.
+            name = conn.scalar(
+                select(activities.c.name)
+                .where(activities.c.id == activity_id, activities.c.flat_id == flat_id)
+                .with_for_update()
+            )
+            if name is None:
+                raise ValueError("That activity is not on your list.")
+            mine = conn.execute(
+                select(activities.c.name, activity_votes.c.voted_on)
+                .join(activities, activities.c.id == activity_votes.c.activity_id)
+                .where(activity_votes.c.user_id == user_id)
+            ).all()
+            votes = [{"activity": row.name, "who": user_id, "day": row.voted_on} for row in mine]
+            check_can_vote([name] + [row.name for row in mine], votes, name, user_id, today)
+            conn.execute(insert(activity_votes).values(activity_id=activity_id, user_id=user_id, voted_on=today))
+    except IntegrityError as error:  # Two votes at the same moment: the database lets only one through.
+        raise ValueError("You already voted for this activity or today.") from error
+
+
+def remove_activity(engine: Engine, user_id: int, activity_id: int) -> None:
+    """Remove an activity and its votes, if the user added it or is the admin of its flat."""
+    membership = get_membership(engine, user_id)
+    if membership is None:
+        raise ValueError("You are not in a flat.")
+    with engine.begin() as conn:
+        added_by = conn.scalar(
+            select(activities.c.added_by)
+            .where(activities.c.id == activity_id, activities.c.flat_id == membership["flat_id"])
+            .with_for_update()
+        )
+        if added_by is None:
+            raise ValueError("That activity is not on your list.")
+        check_can_remove_activity(added_by, user_id, membership["role"])
+        conn.execute(delete(activity_votes).where(activity_votes.c.activity_id == activity_id))
+        conn.execute(delete(activities).where(activities.c.id == activity_id))

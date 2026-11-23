@@ -45,10 +45,14 @@ def init() -> None:
             {"id": 3, "text": "No shoes in the living room", "who": "Sara", "added": days_ago(7), "voters": ["Tom", "Ana"]},
         ],
         "activities": [
-            {"activity": "Pizza & movie night", "cost": 25},
-            {"activity": "Picnic in Parque Eduardo VII", "cost": 15},
-            {"activity": "Day trip to Sintra", "cost": 80},
-            {"activity": "Board game evening", "cost": 0},
+            {"id": 1, "activity": "Pizza & movie night", "cost_cents": 2500, "planned_on": days_ago(-3),
+             "added_by": "Tom", "who": "Tom"},
+            {"id": 2, "activity": "Picnic in Parque Eduardo VII", "cost_cents": 1500, "planned_on": days_ago(-5),
+             "added_by": "Ana", "who": "Ana"},
+            {"id": 3, "activity": "Day trip to Sintra", "cost_cents": 8000, "planned_on": days_ago(-12),
+             "added_by": "Sara", "who": "Sara"},
+            {"id": 4, "activity": "Board game evening", "cost_cents": 0, "planned_on": days_ago(-1),
+             "added_by": "You", "who": "You"},
         ],
         # Each member votes at most once a day, and once per activity (see logic.check_can_vote).
         "votes": [

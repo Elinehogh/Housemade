@@ -1,26 +1,26 @@
-# Housemade's look: a calm sea-blue theme, with a matching dark version for devices in dark mode.
-# See specs/design.md. Colours were checked for readable contrast in both modes.
+# Housemade's Sky look: bold colour tiles, with a matching dark version for devices in dark mode.
+# See specs/design.md. The tile colours and shapes are in screens/sky.py and screens/sky.css.
 
 [theme]
-font = "Poppins:https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap, sans-serif"
-headingFontWeights = [700, 600, 600, 600, 600, 600]
-baseFontSize = 17                    # Streamlit uses 16; a little bigger reads better on phones
-baseRadius = "0.75rem"
+font = "Bricolage Grotesque:https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;700;800&display=swap"
+headingFontWeights = [800, 700, 700, 700, 700, 700]
+baseFontSize = 18                    # Streamlit uses 16; bigger reads better on phones
+baseRadius = "1rem"
 buttonRadius = "full"
 showSidebarBorder = false
 
 [theme.light]
-primaryColor = "#1F6F8B"             # petrol blue: buttons, checkboxes, links
-backgroundColor = "#F4F9FB"          # light blue-grey page
-secondaryBackgroundColor = "#E1EEF3" # cards, inputs and the sidebar
-textColor = "#17303A"                # deep sea
-borderColor = "#CFE0E8"
-linkColor = "#1F6F8B"
+primaryColor = "#2346D8"             # cobalt: buttons, checkboxes, links
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#EEF1F8" # inputs and the sidebar
+textColor = "#14213D"                # deep navy
+borderColor = "#D7DBE6"
+linkColor = "#2346D8"
 
 [theme.dark]
-primaryColor = "#2E86A6"             # a bit darker than the links, so white button text stays readable
-backgroundColor = "#121B20"
-secondaryBackgroundColor = "#1C2830"
-textColor = "#E6F0F4"
-borderColor = "#2A3A44"
-linkColor = "#5FB3D3"
+primaryColor = "#2F52E8"             # keeps white button text readable
+backgroundColor = "#0E1426"
+secondaryBackgroundColor = "#1A2340"
+textColor = "#F2F5FF"
+borderColor = "#2A3557"
+linkColor = "#8EA4FF"

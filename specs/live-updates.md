@@ -10,8 +10,9 @@ out of date and people do the same chore twice.
 
 - Every part of a screen that shows data from the database asks the database
   again every 15 seconds and redraws itself. Today that is:
-  - the members of the flat (Flat tab),
-  - the list of chores and the leaderboard (Chores tab).
+  - the tiles and the members of the flat (Today tab),
+  - the list of chores and the leaderboard (Chores tab),
+  - the list of activities and their votes (Activities tab).
 - Only that part is redrawn, not the whole page, so the open tab and the
   scroll position stay where they are.
 - Forms are not inside the parts that refresh, so a half-typed chore is not
@@ -19,8 +20,8 @@ out of date and people do the same chore twice.
 - The interval is `REFRESH_SECONDS` in `config.py`.
 - The preview with sample data does not refresh: its data is kept per visitor
   and nobody else can change it.
-- When shopping, the fund or activities move to the database, their lists get
-  the same refresh.
+- The Shopping and Fund tabs are saved in the database, but do not refresh
+  themselves yet.
 
 ## Out of scope
 

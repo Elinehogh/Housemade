@@ -577,3 +577,98 @@ def check_can_vote_to_remove(voters: list, who) -> None:
     """Raise ValueError if this member already voted to remove this rule: everyone votes once."""
     if who in voters:
         raise ValueError("You already voted to remove this rule.")
+
+
+# --- Text on the Today tiles (specs/design.md) ---------------------------------
+
+WEATHER_WORDS = {
+    "sunny": "Sunny",
+    "cloudy": "Cloudy",
+    "foggy": "Foggy",
+    "rainy": "Rainy",
+    "snowy": "Snowy",
+    "stormy": "Stormy",
+}
+
+
+def weather_headline(kind: str, city: str) -> str:
+    """The title of the weather tile, for example 'Rainy today in Lisbon'."""
+    if kind not in WEATHER_WORDS:
+        raise ValueError(f"Unknown kind of weather: {kind}.")
+    return f"{WEATHER_WORDS[kind]} today in {city}"
+
+
+def money_summary(cents: int) -> tuple[str, str]:
+    """The title and amount of the money tile, from the member's balance in cents."""
+    if cents < 0:
+        return "You owe", format_euros(-cents)
+    if cents > 0:
+        return "You get back", format_euros(cents)
+    return "All even", format_euros(0)
+
+
+def money_detail(to_pay: list[tuple[str, int]], to_get: list[tuple[str, int]]) -> list[str]:
+    """Lines like '€4.00 to Ana' and '€3.20 from Tom' for the money tile."""
+    paying = [f"{format_euros(cents)} to {name}" for name, cents in to_pay]
+    return paying + [f"{format_euros(cents)} from {name}" for name, cents in to_get]
+
+
+def to_buy_text(items: list[str], shown: int = 2) -> str:
+    """A short shopping list for the tile, for example 'Toilet paper, Dish soap and 2 more'."""
+    if not items:
+        return "Nothing to buy"
+    text = ", ".join(items[:shown])
+    extra = len(items) - shown
+    return f"{text} and {extra} more" if extra > 0 else text
+
+
+# --- Activities in the database (specs/activities.md) --------------------------
+
+
+def activity_key(name: str) -> str:
+    """The form used to compare activities: spaces tidied and capital letters ignored."""
+    return " ".join(name.split()).casefold()
+
+
+def clean_activity_name(raw: str, existing: list[str] = ()) -> str:
+    """Return a tidy activity name, or raise ValueError if it is empty, too long or already on the list."""
+    name = _tidy_text(raw, "Activity", MAX_ACTIVITY_LENGTH)
+    if activity_key(name) in {activity_key(other) for other in existing}:
+        raise ValueError(f"{name} is already on the list.")
+    return name
+
+
+def activity_cost_cents(raw) -> int:
+    """Turn a price in euros into cents. Free (0) is allowed; the most is MAX_ACTIVITY_COST, with 2 decimals."""
+    try:
+        amount = Decimal(str(raw))
+    except InvalidOperation:
+        raise ValueError("Price must be a number.") from None
+    if not amount.is_finite():
+        raise ValueError("Price must be a number.")
+    cents = amount * 100
+    if cents != cents.to_integral_value():
+        raise ValueError("Price can have at most 2 decimals.")
+    if not 0 <= amount <= Decimal(str(MAX_ACTIVITY_COST)):
+        raise ValueError(f"Price must be from €0 to €{MAX_ACTIVITY_COST:.0f}.")
+    return int(cents)
+
+
+def check_activity_date(planned_on: date | None, today: date) -> date:
+    """Return the date of an activity, or raise ValueError if it is missing or in the past."""
+    if planned_on is None:
+        raise ValueError("Pick a date for the activity.")
+    if planned_on < today:
+        raise ValueError("The date cannot be in the past.")
+    return planned_on
+
+
+def check_can_remove_activity(added_by: int, user_id: int, role: str) -> None:
+    """Raise ValueError unless this member added the activity or is the flat's admin."""
+    if added_by != user_id and role != "admin":
+        raise ValueError("Only the person who added it or the admin can remove it.")
+
+
+def can_afford(cost_cents: int, balance_cents: int) -> bool:
+    """True if the fund can pay for this. Free activities are always affordable."""
+    return cost_cents == 0 or cost_cents <= balance_cents

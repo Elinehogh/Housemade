@@ -24,7 +24,6 @@ twice, and nobody can flood the list by voting for everything at once.
 
 - Taking back or changing a vote.
 - Votes that expire, or starting a new round of voting.
-- Saving votes in the database (activities still use the sample data).
 
 ## Done when
 
