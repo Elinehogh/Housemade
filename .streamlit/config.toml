@@ -1,3 +1,26 @@
+# Housemade's look: a calm sea-blue theme, with a matching dark version for devices in dark mode.
+# See specs/design.md. Colours were checked for readable contrast in both modes.
+
 [theme]
-# Background of the main page. Any hex colour works, e.g. "#1E3A8A" for dark blue.
-backgroundColor = "#CFE2FF"
+font = "Poppins:https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap, sans-serif"
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+baseFontSize = 17                    # Streamlit uses 16; a little bigger reads better on phones
+baseRadius = "0.75rem"
+buttonRadius = "full"
+showSidebarBorder = false
+
+[theme.light]
+primaryColor = "#1F6F8B"             # petrol blue: buttons, checkboxes, links
+backgroundColor = "#F4F9FB"          # light blue-grey page
+secondaryBackgroundColor = "#E1EEF3" # cards, inputs and the sidebar
+textColor = "#17303A"                # deep sea
+borderColor = "#CFE0E8"
+linkColor = "#1F6F8B"
+
+[theme.dark]
+primaryColor = "#2E86A6"             # a bit darker than the links, so white button text stays readable
+backgroundColor = "#121B20"
+secondaryBackgroundColor = "#1C2830"
+textColor = "#E6F0F4"
+borderColor = "#2A3A44"
+linkColor = "#5FB3D3"

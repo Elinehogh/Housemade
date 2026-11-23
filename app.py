@@ -3,9 +3,9 @@
 import streamlit as st
 
 import db
-from config import APP_NAME, LOCAL_DATABASE_URL, REFRESH_SECONDS, TAGLINE
-from logic import display_name
-from screens import activities, chores, demo_data, fund, shopping
+from config import APP_NAME, LOCAL_DATABASE_URL
+from logic import avatar_label, display_name
+from screens import activities, avatar, chores, demo_data, fund, home, shopping, welcome
 
 st.set_page_config(page_title=APP_NAME, page_icon="🏠")
 
@@ -39,7 +39,6 @@ def login_is_set_up() -> bool:
 
 
 st.title(f"🏠 {APP_NAME}")
-st.caption(TAGLINE)
 
 if login_is_set_up():
     engine = get_engine()
@@ -51,23 +50,35 @@ if login_is_set_up():
     # --- Login ---------------------------------------------------------------
 
     if not st.user.get("is_logged_in"):
-        st.write("Keep track of chores, shopping and the shared fund in your flat.")
-        st.button("Log in with Google", type="primary", on_click=st.login)
+        welcome.show()
         st.stop()
 
     me = display_name(st.user.get("name"), st.user.email)
     user_id = db.get_or_create_user(engine, st.user.email, me)
 
+    # --- Avatar: picked once, right after the first login ----------------------
+
+    my_avatar = db.get_avatar(engine, user_id)
+    if my_avatar is None:
+        st.subheader(f"👋 Hi {me}! Pick your avatar")
+        st.caption("Your flatmates will see it next to your name. You can change it later.")
+        avatar.picker(engine, user_id, key="first_avatar")
+        st.stop()
+
     with st.sidebar:
+        st.markdown(f"## {avatar_label(*my_avatar)}")
         st.write(f"Logged in as **{st.user.get('name') or st.user.email}**")
-        st.button("Log out", on_click=st.logout)
+        with st.popover("Change avatar", icon=":material/face:"):
+            avatar.picker(engine, user_id, key="sidebar_avatar")
+        st.button("Log out", icon=":material/logout:", on_click=st.logout)
 
     # --- Create or join a flat -----------------------------------------------
 
     membership = db.get_membership(engine, user_id)
 
     if membership is None:
-        st.subheader("Get started")
+        st.subheader("👋 Welcome! Let's set up your flat")
+        st.caption("Create a new flat and invite your flatmates, or join one with the code you got.")
         create_tab, join_tab = st.tabs(["Create a flat", "Join a flat"])
 
         with create_tab:
@@ -92,47 +103,26 @@ if login_is_set_up():
         st.stop()
 
     flat_name = membership["flat_name"]
-    members = db.list_members(engine, user_id)
+    st.sidebar.write(f"🏠 {flat_name}")
     invite_code = membership["invite_code"] if membership["role"] == "admin" else None
 else:
     st.info("**Preview with sample data.** Login is not set up yet, and nothing you do here is saved.")
     flat_name = "Demo flat"
     engine = user_id = None
     me = "You"
-    members = [{"name": name, "role": "admin" if name == "You" else "member"} for name in demo_data.MEMBERS]
     invite_code = "K7QX2M"
 
 # --- The flat ----------------------------------------------------------------
 
-
-def show_members(members: list[dict]) -> None:
-    for member in members:
-        badge = " (admin)" if member["role"] == "admin" else ""
-        st.write(f"- {member['name']}{badge}")
-
-
-@st.fragment(run_every=REFRESH_SECONDS)
-def live_members(engine, user_id: int) -> None:
-    """The member list, asked again every few seconds so new flatmates show up (specs/live-updates.md)."""
-    show_members(db.list_members(engine, user_id))
-
-
 demo_data.init()
 
-st.header(flat_name)
+st.caption(f"Your flat: **{flat_name}**")
 home_tab, chores_tab, shopping_tab, fund_tab, activities_tab = st.tabs(
     ["🏠 Flat", "🧹 Chores", "🛒 Shopping", "🫙 Fund", "🎉 Activities"]
 )
 
 with home_tab:
-    if invite_code:
-        st.info(f"Invite your flatmates with the code **{invite_code}**")
-    st.write("**Members**")
-    if engine is None:
-        show_members(members)
-    else:
-        live_members(engine, user_id)
-
+    home.show(engine, user_id, invite_code, me)
 with chores_tab:
     chores.show(engine, user_id)
 with shopping_tab:

@@ -54,6 +54,7 @@ from logic import (
     clean_invite_code,
     clean_item_name,
     clean_member_name,
+    check_avatar,
     clean_points,
     cost_to_cents,
     leaderboard,
@@ -72,6 +73,9 @@ users = Table(
     Column("id", Integer, primary_key=True),
     Column("email", String(254), nullable=False, unique=True),
     Column("name", String(MAX_NAME_LENGTH), nullable=False),
+    # Empty until the user picks an avatar (logic.AVATAR_EMOJIS and logic.AVATAR_COLORS).
+    Column("avatar_emoji", String(8), nullable=True),
+    Column("avatar_color", String(10), nullable=True),
 )
 
 flats = Table(
@@ -281,6 +285,39 @@ def list_members(engine: Engine, user_id: int) -> list[dict]:
     )
     with engine.connect() as conn:
         return [dict(row) for row in conn.execute(query).mappings()]
+
+
+# --- Avatars -----------------------------------------------------------------
+
+
+def get_avatar(engine: Engine, user_id: int) -> tuple[str, str] | None:
+    """Return the user's (emoji, colour), or None if they have not picked an avatar yet."""
+    with engine.connect() as conn:
+        row = conn.execute(select(users.c.avatar_emoji, users.c.avatar_color).where(users.c.id == user_id)).first()
+    if row is None or row.avatar_emoji is None:
+        return None
+    return row.avatar_emoji, row.avatar_color
+
+
+def set_avatar(engine: Engine, user_id: int, emoji: str, color: str) -> None:
+    """Save the user's own avatar. Only emojis and colours from the lists are accepted."""
+    emoji, color = check_avatar(emoji, color)
+    with engine.begin() as conn:
+        conn.execute(update(users).where(users.c.id == user_id).values(avatar_emoji=emoji, avatar_color=color))
+
+
+def flat_avatars(engine: Engine, user_id: int) -> dict[str, tuple[str | None, str | None]]:
+    """Return {name: (emoji, colour)} for the members of the user's own flat. (None, None): not picked yet."""
+    membership = get_membership(engine, user_id)
+    if membership is None:
+        return {}
+    query = (
+        select(users.c.name, users.c.avatar_emoji, users.c.avatar_color)
+        .join(memberships, memberships.c.user_id == users.c.id)
+        .where(memberships.c.flat_id == membership["flat_id"])
+    )
+    with engine.connect() as conn:
+        return {row.name: (row.avatar_emoji, row.avatar_color) for row in conn.execute(query)}
 
 
 # --- Chores ------------------------------------------------------------------
@@ -501,7 +538,7 @@ def confirm_payment(engine: Engine, user_id: int, from_user: int, amount, now: d
 def money_overview(engine: Engine, user_id: int) -> dict:
     """Return the costs, payments, balances and settle-up suggestions of the user's own flat.
 
-    balances: [(name, cents)] by name. settle_up: [(payer name, receiver name, cents)].
+    mine: the user's own balance in cents. balances: [(name, cents)] by name. settle_up: [(payer name, receiver name, cents)].
     expenses and payments: newest first.
     """
     flat_id = _own_flat_id(engine, user_id)
@@ -527,6 +564,7 @@ def money_overview(engine: Engine, user_id: int) -> dict:
         [(row["from_user"], row["to_user"], row["amount_cents"]) for row in payment_rows],
     )
     return {
+        "mine": balance[user_id],
         "balances": [(members[member], balance[member]) for member in members],
         "settle_up": [(members[a], members[b], cents) for a, b, cents in settle_up(balance)],
         "expenses": [

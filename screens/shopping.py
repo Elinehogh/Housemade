@@ -3,6 +3,7 @@
 import streamlit as st
 
 import db
+from screens.avatar import with_name
 from logic import COMMON_ITEMS, MAX_AMOUNT_CENTS, balances, clean_amount, format_euros
 from screens.demo_data import MEMBERS
 
@@ -94,14 +95,15 @@ def show_money(engine, user_id: int) -> None:
             except ValueError as error:
                 st.error(str(error))
 
+    avatars = db.flat_avatars(engine, user_id)
     st.write("**Who owes what**")
     for name, cents in overview["balances"]:
         if cents > 0:
-            st.write(f"🟢 **{name}** should get back {format_euros(cents)}")
+            st.markdown(f"🟢 {with_name(name, avatars)} should get back {format_euros(cents)}")
         elif cents < 0:
-            st.write(f"🔴 **{name}** owes {format_euros(-cents)}")
+            st.markdown(f"🔴 {with_name(name, avatars)} owes {format_euros(-cents)}")
         else:
-            st.write(f"⚪ **{name}** is even")
+            st.markdown(f"⚪ {with_name(name, avatars)} is even")
 
     if overview["settle_up"]:
         st.write("**To settle up**")

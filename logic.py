@@ -58,6 +58,30 @@ def balances(members: list[str], payments: list[tuple[str, float]]) -> dict[str,
     return {name: round(paid[name] - share, 2) for name in members}
 
 
+# --- Avatars (specs/design.md) -------------------------------------------------
+
+AVATAR_EMOJIS = ("🦊", "🐻", "🐼", "🐨", "🐸", "🐙", "🦄", "🐱", "🐶", "🐧", "🦉", "🐢", "🌻", "🌵", "🍕", "🎸")
+# Streamlit's own background colours, used as ":orange-background[🦊]" in markdown (no HTML needed).
+AVATAR_COLORS = ("red", "orange", "yellow", "green", "blue", "violet", "gray")
+DEFAULT_AVATAR = ("🙂", "gray")
+
+
+def check_avatar(emoji: str, color: str) -> tuple[str, str]:
+    """Return the avatar, or raise ValueError unless both the emoji and the colour are from the lists."""
+    if emoji not in AVATAR_EMOJIS:
+        raise ValueError("Pick one of the emojis in the list.")
+    if color not in AVATAR_COLORS:
+        raise ValueError("Pick one of the colours in the list.")
+    return emoji, color
+
+
+def avatar_label(emoji: str | None, color: str | None) -> str:
+    """The avatar as Streamlit markdown: the emoji on its colour, or the default if none is picked."""
+    if emoji is None or color is None:
+        emoji, color = DEFAULT_AVATAR
+    return f":{color}-background[{emoji}]"
+
+
 def clean_flat_name(raw: str) -> str:
     """Return a tidy flat name, or raise ValueError if it is not allowed."""
     name = " ".join(raw.split())
@@ -167,6 +191,26 @@ def deadline_status(due_on: date | None, today: date) -> str | None:
 def done_before_this_week(done_at: datetime, today: date) -> bool:
     """True if a chore was done before Monday of this week, so it belongs in the history."""
     return done_at.date() < week_start(today)
+
+
+def my_chores_summary(chores: list[dict], user_id: int, today: date, next_count: int = 3) -> dict:
+    """Numbers for the Flat tab overview: one member's open and overdue chores, points this week,
+    and their next chores (soonest deadline first, chores without a deadline last).
+
+    chores are dicts with 'assigned_to', 'points', 'done', 'done_at' and 'due_on', as from db.list_chores.
+    """
+    mine = [chore for chore in chores if chore["assigned_to"] == user_id]
+    open_chores = [chore for chore in mine if not chore["done"]]
+    points = sum(
+        chore["points"] for chore in mine if chore["done"] and not done_before_this_week(chore["done_at"], today)
+    )
+    soonest_first = sorted(open_chores, key=lambda chore: (chore["due_on"] is None, chore["due_on"] or today))
+    return {
+        "open": len(open_chores),
+        "overdue": sum(deadline_status(chore["due_on"], today) == "overdue" for chore in open_chores),
+        "points": points,
+        "next": soonest_first[:next_count],
+    }
 
 
 def leaderboard(members: dict[int, str], done: list[tuple[int, int]]) -> list[tuple[str, int]]:
