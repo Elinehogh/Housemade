@@ -6,9 +6,9 @@ import db
 from logic import AVATAR_COLORS, AVATAR_EMOJIS, avatar_label
 
 
-def picker(engine, user_id: int, key: str) -> None:
-    """Emoji and colour choices with a preview, and a button that saves them."""
-    current = db.get_avatar(engine, user_id) or (AVATAR_EMOJIS[0], AVATAR_COLORS[4])
+def picker(engine, user_id: int, key: str, avatar: tuple[str, str] | None = None) -> None:
+    """Emoji and colour choices with a preview, and a button that saves them. avatar: the member's current one."""
+    current = avatar or (AVATAR_EMOJIS[0], AVATAR_COLORS[4])
     emoji = st.pills("Emoji", AVATAR_EMOJIS, default=current[0], required=True, key=f"{key}_emoji")
     color = st.pills(
         "Colour",

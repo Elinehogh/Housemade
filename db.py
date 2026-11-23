@@ -28,8 +28,10 @@ from sqlalchemy import (
     func,
     insert,
     inspect,
+    null,
     select,
     text,
+    union_all,
     update,
 )
 from sqlalchemy.engine import Engine
@@ -451,6 +453,11 @@ def list_chores(engine: Engine, user_id: int) -> list[dict]:
     Open chores first, by deadline (soonest first, no deadline last). Then done chores, newest first.
     """
     flat_id = _own_flat_id(engine, user_id)
+    with engine.connect() as conn:
+        return _chores_on(conn, flat_id)
+
+
+def _chores_on(conn, flat_id: int) -> list[dict]:
     query = (
         select(
             chores.c.id, chores.c.name, chores.c.points, chores.c.assigned_to, chores.c.done_at, chores.c.due_on,
@@ -466,8 +473,7 @@ def list_chores(engine: Engine, user_id: int) -> list[dict]:
             chores.c.id,
         )
     )
-    with engine.connect() as conn:
-        rows = conn.execute(query).mappings().all()
+    rows = conn.execute(query).mappings().all()
     return [{**row, "done": row["done_at"] is not None} for row in rows]
 
 
@@ -527,6 +533,11 @@ def add_item(engine: Engine, user_id: int, name: str) -> int:
 def list_items(engine: Engine, user_id: int) -> list[dict]:
     """Return the shopping list of the user's own flat: items still to buy first, then bought ones."""
     flat_id = _own_flat_id(engine, user_id)
+    with engine.connect() as conn:
+        return _items_on(conn, flat_id)
+
+
+def _items_on(conn, flat_id: int) -> list[dict]:
     buyer = users.alias("buyer")
     query = (
         select(shopping_items.c.id, shopping_items.c.name, shopping_items.c.bought_at, buyer.c.name.label("bought_by"))
@@ -534,8 +545,7 @@ def list_items(engine: Engine, user_id: int) -> list[dict]:
         .where(shopping_items.c.flat_id == flat_id)
         .order_by(shopping_items.c.bought_at.is_not(None), shopping_items.c.id)
     )
-    with engine.connect() as conn:
-        rows = conn.execute(query).mappings().all()
+    rows = conn.execute(query).mappings().all()
     return [{**row, "bought": row["bought_at"] is not None} for row in rows]
 
 
@@ -834,36 +844,37 @@ def list_activities(engine: Engine, user_id: int) -> list[dict]:
     and 'votes': [{'user_id', 'name', 'day'}] in the order they were cast.
     """
     flat_id = _own_flat_id(engine, user_id)
-    activities_query = (
-        select(
-            activities.c.id, activities.c.name.label("activity"), activities.c.cost_cents,
-            activities.c.planned_on, activities.c.added_by, users.c.name.label("who"),
-        )
-        .join(users, users.c.id == activities.c.added_by)
-        .where(activities.c.flat_id == flat_id)
-    )
-    votes_query = (
-        select(activity_votes.c.activity_id, activity_votes.c.user_id, activity_votes.c.voted_on, users.c.name)
-        .join(users, users.c.id == activity_votes.c.user_id)
-        .join(activities, activities.c.id == activity_votes.c.activity_id)
-        .where(activities.c.flat_id == flat_id)
-        .order_by(activity_votes.c.voted_on, users.c.name)
-    )
     with engine.connect() as conn:
-        rows = conn.execute(activities_query).mappings().all()
-        vote_rows = conn.execute(votes_query).all()
-    items = [
-        {
-            **row,
-            "votes": [
-                {"user_id": vote.user_id, "name": vote.name, "day": vote.voted_on}
-                for vote in vote_rows if vote.activity_id == row["id"]
-            ],
-        }
-        for row in rows
+        return _activities_on(conn, flat_id)
+
+
+def _activities_on(conn, flat_id: int) -> list[dict]:
+    """The flat's activities with their votes, in one query, most votes first."""
+    adder, voter = users.alias("adder"), users.alias("voter")
+    query = (
+        select(
+            activities.c.id, activities.c.name, activities.c.cost_cents, activities.c.planned_on,
+            activities.c.added_by, adder.c.name.label("who"), activity_votes.c.user_id.label("voter_id"),
+            activity_votes.c.voted_on, voter.c.name.label("voter_name"),
+        )
+        .join(adder, adder.c.id == activities.c.added_by)
+        .outerjoin(activity_votes, activity_votes.c.activity_id == activities.c.id)
+        .outerjoin(voter, voter.c.id == activity_votes.c.user_id)
+        .where(activities.c.flat_id == flat_id)
+        .order_by(activities.c.id, activity_votes.c.voted_on, voter.c.name)
+    )
+    items: dict[int, dict] = {}
+    for row in conn.execute(query):
+        item = items.setdefault(row.id, {
+            "id": row.id, "activity": row.name, "cost_cents": row.cost_cents, "planned_on": row.planned_on,
+            "added_by": row.added_by, "who": row.who, "votes": [],
+        })
+        if row.voter_id is not None:
+            item["votes"].append({"user_id": row.voter_id, "name": row.voter_name, "day": row.voted_on})
+    ranking_votes = [
+        {"activity": item["activity"], "who": vote["user_id"]} for item in items.values() for vote in item["votes"]
     ]
-    ranking_votes = [{"activity": item["activity"], "who": vote["user_id"]} for item in items for vote in item["votes"]]
-    return [item for item, _ in rank_activities(items, ranking_votes)]
+    return [item for item, _ in rank_activities(list(items.values()), ranking_votes)]
 
 
 def vote_for_activity(engine: Engine, user_id: int, activity_id: int, today: date | None = None) -> None:
@@ -908,3 +919,97 @@ def remove_activity(engine: Engine, user_id: int, activity_id: int) -> None:
         check_can_remove_activity(added_by, user_id, membership["role"])
         conn.execute(delete(activity_votes).where(activity_votes.c.activity_id == activity_id))
         conn.execute(delete(activities).where(activities.c.id == activity_id))
+
+
+# --- One visit for the Today tab (specs/speed.md) --------------------------------
+
+
+def member_context(engine: Engine, user_id: int) -> dict:
+    """Return the user's 'avatar' and 'membership' (as get_avatar and get_membership) in one query."""
+    query = (
+        select(
+            users.c.avatar_emoji, users.c.avatar_color, memberships.c.role, memberships.c.flat_id,
+            flats.c.name.label("flat_name"), flats.c.invite_code,
+        )
+        .select_from(
+            users.outerjoin(memberships, memberships.c.user_id == users.c.id)
+            .outerjoin(flats, flats.c.id == memberships.c.flat_id)
+        )
+        .where(users.c.id == user_id)
+    )
+    with engine.connect() as conn:
+        row = conn.execute(query).first()
+    if row is None:
+        return {"avatar": None, "membership": None}
+    avatar = None if row.avatar_emoji is None else (row.avatar_emoji, row.avatar_color)
+    membership = None if row.flat_id is None else {
+        "flat_id": row.flat_id, "flat_name": row.flat_name, "invite_code": row.invite_code, "role": row.role,
+    }
+    return {"avatar": avatar, "membership": membership}
+
+
+def today_overview(engine: Engine, user_id: int, today: date | None = None) -> dict:
+    """Return everything the Today tab shows, over one connection and at most 7 queries.
+
+    The database is far from the app, so each trip counts. The flat is found from the user's id.
+    """
+    own_flat = select(memberships.c.flat_id).where(memberships.c.user_id == user_id).scalar_subquery()
+    members_query = (
+        select(
+            users.c.id, users.c.name, users.c.avatar_emoji, users.c.avatar_color,
+            memberships.c.role, memberships.c.flat_id,
+        )
+        .join(memberships, memberships.c.user_id == users.c.id)
+        .where(memberships.c.flat_id == own_flat)
+        .order_by(users.c.name)
+    )
+    with engine.connect() as conn:
+        member_rows = conn.execute(members_query).all()
+        if not member_rows:
+            raise ValueError("You are not in a flat.")
+        flat_id = member_rows[0].flat_id
+        chore_rows = _chores_on(conn, flat_id)
+        money_rows = conn.execute(
+            union_all(
+                select(expenses.c.paid_by.label("payer"), null().label("receiver"), expenses.c.amount_cents.label("cents"))
+                .where(expenses.c.flat_id == flat_id),
+                select(payments.c.from_user, payments.c.to_user, payments.c.amount_cents)
+                .where(payments.c.flat_id == flat_id),
+            )
+        ).all()
+        items = _items_on(conn, flat_id)
+        fund_row = conn.execute(
+            select(
+                select(func.coalesce(func.sum(fund_entries.c.cents), 0))
+                .where(fund_entries.c.flat_id == flat_id).scalar_subquery().label("balance"),
+                select(fund_goals.c.name).where(fund_goals.c.flat_id == flat_id).scalar_subquery().label("goal_name"),
+                select(fund_goals.c.cents).where(fund_goals.c.flat_id == flat_id).scalar_subquery().label("goal_cents"),
+            )
+        ).one()
+        activity_items = _activities_on(conn, flat_id)
+
+    names = {row.id: row.name for row in member_rows}
+    balance = shopping_balances(
+        list(names),
+        [(row.payer, row.cents) for row in money_rows if row.receiver is None],
+        [(row.payer, row.receiver, row.cents) for row in money_rows if row.receiver is not None],
+    )
+    transfers = settle_up(balance)
+    monday = datetime.combine(week_start(today or date.today()), time.min)
+    done_this_week = [(c["assigned_to"], c["points"]) for c in chore_rows if c["done"] and c["done_at"] >= monday]
+    return {
+        "my_name": names[user_id],
+        "members": [{"id": row.id, "name": row.name, "role": row.role} for row in member_rows],
+        "avatars": {row.name: (row.avatar_emoji, row.avatar_color) for row in member_rows},
+        "chores": chore_rows,
+        "money": {
+            "mine": balance[user_id],
+            "mine_to_pay": [(names[to], cents) for payer, to, cents in transfers if payer == user_id],
+            "mine_to_get": [(names[frm], cents) for frm, to, cents in transfers if to == user_id],
+        },
+        "items": items,
+        "fund": fund_row.balance,
+        "goal": None if fund_row.goal_name is None else {"name": fund_row.goal_name, "cents": fund_row.goal_cents},
+        "leaderboard": leaderboard(names, done_this_week),
+        "activities": activity_items,
+    }
