@@ -226,3 +226,6 @@ __marimo__/
 
 # macOS folder settings
 .DS_Store
+
+# Local printouts of the app
+Housemade.pdf
