@@ -12,7 +12,8 @@ out of date and people do the same chore twice.
   again every 15 seconds and redraws itself. Today that is:
   - the tiles and the members of the flat (Today tab),
   - the list of chores and the leaderboard (Chores tab),
-  - the list of activities and their votes (Activities tab).
+  - the list of activities and their votes (Activities tab),
+  - the weekly prize and its votes (Chores tab).
 - Only that part is redrawn, not the whole page, so the open tab and the
   scroll position stay where they are.
 - Forms are not inside the parts that refresh, so a half-typed chore is not

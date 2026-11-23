@@ -91,6 +91,9 @@
 .st-key-tile_money { background: var(--hm-coral); min-height: 270px; }
 .st-key-tile_fund { background: var(--hm-mint); min-height: 270px; }
 .st-key-tile_buy { background: var(--hm-lilac); min-height: 210px; }
+.st-key-tile_prize_winner { background: var(--hm-butter); }
+.st-key-tile_prize_loser { background: var(--hm-coral); }
+.st-key-tile_prize_last { background: var(--hm-lilac); height: auto; }
 .st-key-tile_week, .st-key-tile_top { background: var(--hm-soft); color: var(--hm-text); min-height: 210px; }
 
 [class*="st-key-sky_hero"] {
@@ -146,6 +149,12 @@
 [class*="st-key-idea_"] button {
   background: #14213D;
   color: #FFFFFF;
+}
+
+[class*="st-key-idea_"] button:disabled {
+  background: #E4E7EF;
+  color: #14213D;
+  opacity: 1;
 }
 
 [class*="st-key-idea_"] {

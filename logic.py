@@ -672,3 +672,84 @@ def check_can_remove_activity(added_by: int, user_id: int, role: str) -> None:
 def can_afford(cost_cents: int, balance_cents: int) -> bool:
     """True if the fund can pay for this. Free activities are always affordable."""
     return cost_cents == 0 or cost_cents <= balance_cents
+
+
+# --- Weekly prize (specs/weekly-prize.md) --------------------------------------
+
+PRIZE_KINDS = ("winner", "loser")
+MAX_PRIZE_LENGTH = 60
+MAX_PRIZES_PER_KIND = 5
+LAST_VOTING_WEEKDAY = 2  # Wednesday; Monday is 0
+
+# Common ideas offered in the form, so nobody has to type them.
+COMMON_PRIZES = {
+    "winner": (
+        "A free beer from each flatmate",
+        "Picks the next movie",
+        "Skips one chore next week",
+        "Picks the weekend plan",
+    ),
+    "loser": (
+        "Cook dinner on Friday",
+        "Clean the bathroom next week",
+        "Buy the next round",
+        "Take out the trash all week",
+    ),
+}
+
+
+def voting_is_open(day: date) -> bool:
+    """True from Monday to Wednesday, so nobody votes knowing who is about to lose."""
+    return day.weekday() <= LAST_VOTING_WEEKDAY
+
+
+def prize_key(text: str) -> str:
+    """The form used to compare suggestions: spaces tidied and capital letters ignored."""
+    return " ".join(text.split()).casefold()
+
+
+def clean_prize(raw: str, existing: list[str] = ()) -> str:
+    """Return a tidy suggestion, or raise ValueError if it is empty, too long or already suggested."""
+    text = _tidy_text(raw, "Suggestion", MAX_PRIZE_LENGTH)
+    if prize_key(text) in {prize_key(other) for other in existing}:
+        raise ValueError("That has already been suggested this week.")
+    return text
+
+
+def check_can_suggest_prize(kind: str, existing_count: int, today: date) -> None:
+    """Raise ValueError unless a new option can be added to this vote today."""
+    if kind not in PRIZE_KINDS:
+        raise ValueError("Pick what the winner gets or what the loser has to do.")
+    if not voting_is_open(today):
+        raise ValueError("Voting closed on Wednesday. You can suggest again next Monday.")
+    if existing_count >= MAX_PRIZES_PER_KIND:
+        raise ValueError(f"Each vote can have at most {MAX_PRIZES_PER_KIND} options.")
+
+
+def check_can_vote_prize(prize_week: date, already_voted: bool, today: date) -> None:
+    """Raise ValueError unless this member can vote for this option today."""
+    if prize_week != week_start(today):
+        raise ValueError("You can only vote on this week's options.")
+    if not voting_is_open(today):
+        raise ValueError("Voting closed on Wednesday.")
+    if already_voted:
+        raise ValueError("You already voted in this vote this week.")
+
+
+def chosen_prize(options: list[dict]) -> dict | None:
+    """The option with the most votes; a tie goes to the first suggested. None if nobody voted."""
+    voted = [option for option in options if option["votes"]]
+    if not voted:
+        return None
+    return min(voted, key=lambda option: (-len(option["votes"]), option["id"]))
+
+
+def week_result(ranking: list[tuple[str, int]]) -> dict:
+    """Who won and who lost a week, from (name, points). Nobody if everyone has the same points."""
+    points = [score for _, score in ranking]
+    if len(points) < 2 or max(points) == min(points):
+        return {"winners": [], "losers": []}
+    return {
+        "winners": [name for name, score in ranking if score == max(points)],
+        "losers": [name for name, score in ranking if score == min(points)],
+    }
