@@ -10,8 +10,9 @@ Chores, shopping and a shared fund for your flat.
 
 | Name | Student number |
 |---|---|
-| _TODO_ | _TODO_ |
-
+| Eline Høgh | 80926 |
+| Emil Rydin | 78032 |
+| August Setlo | 78469 |
 ## Run locally
 
 Install [uv](https://docs.astral.sh/uv/) first. Then, in this folder:
