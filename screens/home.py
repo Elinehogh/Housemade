@@ -30,34 +30,31 @@ from screens.sky import open_view
 WET_WEATHER = ("rainy", "stormy")
 
 
-def show(engine, user_id: int, invite_code: str | None, me: str = "You") -> None:
+def show(engine, user_id: int, invite_code: str | None, me: str = "You", my_avatar: tuple | None = None) -> None:
     """Show today's overview of the user's flat. Without a login (engine is None), show the sample data."""
     if engine is None:
         show_demo(invite_code)
         return
-    _greeting(engine, user_id, me)
-    _weather_tile(engine, user_id)
-    _live_tiles(engine, user_id)
-    _invite(invite_code)
-    _members(engine, user_id)
+    _greeting(engine, user_id, me, my_avatar)
+    _live_today(engine, user_id, invite_code)
 
 
-def _greeting(engine, user_id: int, me: str) -> None:
+def _greeting(engine, user_id: int, me: str, my_avatar: tuple | None) -> None:
     """The member's avatar and name, with a button to change the avatar right where they see it.
 
-    Kept outside the refreshing tiles, so the open avatar picker does not close every few seconds.
+    Kept outside the refreshing part, so the open avatar picker does not close every few seconds.
     """
     face, hello, change = st.columns([1, 5, 3], vertical_alignment="center")
-    face.markdown(f"## {avatar_label(*(db.get_avatar(engine, user_id) or (None, None)))}")
+    face.markdown(f"## {avatar_label(*(my_avatar or (None, None)))}")
     hello.markdown(f"### Hi {me}!")
     with change.popover("Change avatar", icon=":material/face:"):
-        picker(engine, user_id, key="home_avatar")
+        picker(engine, user_id, key="home_avatar", avatar=my_avatar)
 
 
 # --- The weather and ideas for today -------------------------------------------
 
 
-def _weather_tile(engine, user_id: int | None) -> None:
+def _weather_tile(engine, user_id: int | None, items: list[dict]) -> None:
     place = activities.current_place()
     try:
         weather = activities.weather_at(place)
@@ -77,7 +74,7 @@ def _weather_tile(engine, user_id: int | None) -> None:
             )
         with right:
             st.html('<h2 class="hm-title">Good ideas for today</h2>')
-            ideas = rule_suggestions(weather, [item["activity"] for item in activities.load(engine, user_id)])
+            ideas = rule_suggestions(weather, [item["activity"] for item in items])
             if not ideas:
                 st.html('<p class="hm-body">All of today\'s ideas are already on your list.</p>')
             for i, idea in enumerate(ideas):
@@ -98,31 +95,33 @@ def _weather_tile(engine, user_id: int | None) -> None:
 # --- The tiles -----------------------------------------------------------------
 
 
-# The numbers ask the database again every few seconds, like the other shared lists (specs/live-updates.md).
+# Everything here comes from one visit to the database (specs/speed.md),
+# and is asked for again every few seconds (specs/live-updates.md).
 @st.fragment(run_every=REFRESH_SECONDS)
-def _live_tiles(engine, user_id: int) -> None:
+def _live_today(engine, user_id: int, invite_code: str | None) -> None:
     today = date.today()
-    summary = my_chores_summary(db.list_chores(engine, user_id), user_id, today)
-    money = db.money_overview(engine, user_id)
-    goal = db.get_fund_goal(engine, user_id)
-    to_buy = [item["name"] for item in db.list_items(engine, user_id) if not item["bought"]]
+    data = db.today_overview(engine, user_id, today)
+    _weather_tile(engine, user_id, data["activities"])
     _tiles(
         engine=engine,
         user_id=user_id,
-        summary=summary,
+        summary=my_chores_summary(data["chores"], user_id, today),
         finish=lambda chore: db.tick_off_chore(engine, user_id, chore["id"]),
-        money_cents=money["mine"],
-        money_lines=money_detail(money["mine_to_pay"], money["mine_to_get"]),
-        fund=db.fund_balance(engine, user_id),
-        goal=goal,
-        to_buy=to_buy,
-        ranking=db.chores_leaderboard(engine, user_id),
-        my_name=db.flat_members(engine, user_id)[user_id],
+        money_cents=data["money"]["mine"],
+        money_lines=money_detail(data["money"]["mine_to_pay"], data["money"]["mine_to_get"]),
+        fund=data["fund"],
+        goal=data["goal"],
+        to_buy=[item["name"] for item in data["items"] if not item["bought"]],
+        ranking=data["leaderboard"],
+        my_name=data["my_name"],
+        items=data["activities"],
         today=today,
     )
+    _invite(invite_code)
+    _show_members(data["members"], data["avatars"])
 
 
-def _tiles(engine, user_id, summary, finish, money_cents, money_lines, fund, goal, to_buy, ranking, my_name, today) -> None:
+def _tiles(engine, user_id, summary, finish, money_cents, money_lines, fund, goal, to_buy, ranking, my_name, items, today) -> None:
     with st.container(key="sky_grid"):
         _chore_tile(summary, finish, today)
         _money_tile(money_cents, money_lines)
@@ -137,7 +136,7 @@ def _tiles(engine, user_id, summary, finish, money_cents, money_lines, fund, goa
                 for name, points in ranking
             )
             st.html(rows)
-        _top_activity_tile(engine, user_id, today)
+        _top_activity_tile(engine, user_id, today, items)
         # Only the title: the rules themselves are on the House rules tab.
         if st.button("House rules", key="open_rules", on_click=open_view, args=("House rules",), width="stretch"):
             st.rerun()
@@ -204,8 +203,7 @@ def _fund_tile(fund: int, goal: dict | None) -> None:
             )
 
 
-def _top_activity_tile(engine, user_id: int | None, today: date) -> None:
-    items = activities.load(engine, user_id)
+def _top_activity_tile(engine, user_id: int | None, today: date, items: list[dict]) -> None:
     with st.container(key="tile_top"):
         _title("Top activity")
         if not items:
@@ -230,12 +228,6 @@ def _top_activity_tile(engine, user_id: int | None, today: date) -> None:
 def _invite(invite_code: str | None) -> None:
     if invite_code:
         st.info(f"Invite your flatmates with the code **{invite_code}**", icon="✉️")
-
-
-@st.fragment(run_every=REFRESH_SECONDS)
-def _members(engine, user_id: int) -> None:
-    """The member list, asked again every few seconds so new flatmates show up (specs/live-updates.md)."""
-    _show_members(db.list_members(engine, user_id), db.flat_avatars(engine, user_id))
 
 
 def _show_members(members: list[dict], avatars: dict) -> None:
@@ -270,7 +262,8 @@ def show_demo(invite_code: str | None) -> None:
     goal_name, goal_euros = demo["fund_goal"]
     ranking = sorted(demo["points"].items(), key=lambda item: (-item[1], item[0]))
 
-    _weather_tile(None, None)
+    items = activities.load(None, None)
+    _weather_tile(None, None, items)
     _tiles(
         engine=None,
         user_id=None,
@@ -283,6 +276,7 @@ def show_demo(invite_code: str | None) -> None:
         to_buy=[item["item"] for item in demo["shopping"] if not item["bought"]],
         ranking=ranking,
         my_name="You",
+        items=items,
         today=today,
     )
     _invite(invite_code)
