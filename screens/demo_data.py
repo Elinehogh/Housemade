@@ -7,6 +7,8 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from logic import week_start
+
 MEMBERS = ["You", "Ana", "Tom", "Sara"]
 
 
@@ -17,6 +19,9 @@ def init() -> None:
 
     def days_ago(n: int) -> date:
         return date.today() - timedelta(days=n)
+
+    monday = week_start(date.today())
+    last_monday = monday - timedelta(days=7)
 
     st.session_state.demo = {
         "chores": [
@@ -39,6 +44,21 @@ def init() -> None:
             {"what": "Pant", "who": "Ana", "amount": 4.50},
         ],
         "fund_goal": ("Flat trip to Sintra", 80.0),
+        "last_week_points": {"You": 9, "Ana": 14, "Tom": 6, "Sara": 11},
+        "prizes": [
+            {"id": 1, "week": last_monday, "kind": "winner", "name": "Picks the weekend plan", "who": "Ana",
+             "votes": ["Ana", "Sara", "You"]},
+            {"id": 2, "week": last_monday, "kind": "loser", "name": "Buy the next round", "who": "Sara",
+             "votes": ["Ana", "Sara"]},
+            {"id": 3, "week": monday, "kind": "winner", "name": "A free beer from each flatmate", "who": "Ana",
+             "votes": ["Ana", "Tom"]},
+            {"id": 4, "week": monday, "kind": "winner", "name": "Picks the next movie", "who": "Sara",
+             "votes": ["Sara"]},
+            {"id": 5, "week": monday, "kind": "loser", "name": "Cook dinner on Friday", "who": "Tom",
+             "votes": ["Tom", "Sara"]},
+            {"id": 6, "week": monday, "kind": "loser", "name": "Clean the bathroom next week", "who": "Ana",
+             "votes": ["Ana"]},
+        ],
         "house_rules": [
             {"id": 1, "text": "Quiet after 23:00 on weekdays", "who": "Ana", "added": days_ago(30), "voters": []},
             {"id": 2, "text": "Clean the kitchen right after you cook", "who": "Tom", "added": days_ago(21), "voters": ["Ana"]},

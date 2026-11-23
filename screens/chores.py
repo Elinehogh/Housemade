@@ -5,6 +5,7 @@ from datetime import date
 import streamlit as st
 
 import db
+from screens import prizes
 from screens.avatar import with_name
 from config import REFRESH_SECONDS
 from logic import (
@@ -32,6 +33,7 @@ def show(engine=None, user_id: int | None = None) -> None:
     _to_do(engine, user_id)
     show_add_form(engine, user_id, date.today())
     _done_and_leaderboard(engine, user_id)
+    prizes.show(engine, user_id)
 
 
 # The lists and the leaderboard ask the database again every few seconds, so chores added or
@@ -70,17 +72,16 @@ def _done_and_leaderboard(engine, user_id: int) -> None:
         st.caption("Nothing done yet this week.")
     for chore in this_week:
         st.write(f"~~{chore['name']}~~ · {chore['who']} · {chore['points']} pts · {_when(chore['done_at'])}")
+    if history:
+        with st.expander(f"History ({len(history)})"):
+            for chore in history:
+                st.write(f"{chore['name']} · {chore['who']} · {chore['points']} pts · {_when(chore['done_at'])}")
 
     st.subheader("🏆 Leaderboard this week")
     avatars = db.flat_avatars(engine, user_id)
     for place, (name, points) in enumerate(db.chores_leaderboard(engine, user_id), start=1):
         st.markdown(f"{MEDALS.get(place, '  ')} {with_name(name, avatars)}: {points} points")
     st.caption("This week's winner picks the next flat activity.")
-
-    if history:
-        with st.expander(f"History ({len(history)})"):
-            for chore in history:
-                st.write(f"{chore['name']} · {chore['who']} · {chore['points']} pts · {_when(chore['done_at'])}")
 
 
 def show_add_form(engine, user_id: int, today: date) -> None:
@@ -164,3 +165,4 @@ def show_demo() -> None:
     for place, (name, points) in enumerate(ranking, start=1):
         st.write(f"{MEDALS.get(place, '  ')} **{name}**: {points} points")
     st.caption("This week's winner picks the next flat activity.")
+    prizes.show()

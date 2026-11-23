@@ -9,7 +9,7 @@ id, not a flat id, and look up the user's own flat. A user can never reach
 another flat's data by passing a different id.
 """
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import (
     CheckConstraint,
@@ -48,19 +48,24 @@ from logic import (
     MAX_ITEM_LENGTH,
     MAX_NAME_LENGTH,
     MAX_POINTS,
+    MAX_PRIZE_LENGTH,
     MAX_RULE_LENGTH,
     MIN_POINTS,
+    PRIZE_KINDS,
     ROLES,
     activity_cost_cents,
     activity_key,
     check_activity_date,
     check_can_remove_activity,
+    check_can_suggest_prize,
     check_can_take_out,
     check_can_tick_off,
     check_can_vote,
+    check_can_vote_prize,
     check_can_vote_to_remove,
     check_deadline,
     check_payment,
+    chosen_prize,
     clean_activity_name,
     clean_chore_name,
     clean_description,
@@ -70,17 +75,21 @@ from logic import (
     clean_member_name,
     check_avatar,
     clean_points,
+    clean_prize,
     clean_rule,
     cost_to_cents,
     has_majority,
     leaderboard,
     new_invite_code,
+    prize_key,
     rank_activities,
     rule_key,
     settle_up,
     shopping_balances,
     to_cents,
     votes_needed,
+    voting_is_open,
+    week_result,
     week_start,
 )
 
@@ -219,6 +228,35 @@ activity_votes = Table(
     Column("user_id", ForeignKey("users.id"), primary_key=True),
     Column("voted_on", Date, nullable=False),
     UniqueConstraint("user_id", "voted_on", name="one_vote_per_day"),
+)
+
+# What the winner of a week gets and what the loser has to do: the options the flat suggests.
+# name_key is the name without capitals, so the same option cannot be suggested twice in one vote.
+weekly_prizes = Table(
+    "weekly_prizes",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("flat_id", ForeignKey("flats.id"), nullable=False),
+    Column("week_start", Date, nullable=False),  # the Monday of the week
+    Column("kind", String(10), nullable=False),
+    Column("name", String(MAX_PRIZE_LENGTH), nullable=False),
+    Column("name_key", String(MAX_PRIZE_LENGTH * 3), nullable=False),
+    Column("added_by", ForeignKey("users.id"), nullable=False),
+    Column("created_at", DateTime, nullable=False),
+    UniqueConstraint("flat_id", "week_start", "kind", "name_key", name="one_prize_option_per_vote"),
+    CheckConstraint(f"kind IN {PRIZE_KINDS}", name="valid_prize_kind"),
+)
+
+# The primary key allows each member one vote per week in each of the two votes.
+# A user belongs to one flat, so this holds per flat too.
+weekly_prize_votes = Table(
+    "weekly_prize_votes",
+    metadata,
+    Column("user_id", ForeignKey("users.id"), primary_key=True),
+    Column("week_start", Date, primary_key=True),
+    Column("kind", String(10), primary_key=True),
+    Column("prize_id", ForeignKey("weekly_prizes.id"), nullable=False),
+    CheckConstraint(f"kind IN {PRIZE_KINDS}", name="valid_prize_vote_kind"),
 )
 
 # A flat's house rules. rule_key is the text without capitals, so a flat cannot have the same rule twice.
@@ -1012,4 +1050,129 @@ def today_overview(engine: Engine, user_id: int, today: date | None = None) -> d
         "goal": None if fund_row.goal_name is None else {"name": fund_row.goal_name, "cents": fund_row.goal_cents},
         "leaderboard": leaderboard(names, done_this_week),
         "activities": activity_items,
+    }
+
+
+# --- Weekly prize (specs/weekly-prize.md) ----------------------------------------
+
+
+def add_prize(
+    engine: Engine, user_id: int, kind: str, raw: str, today: date | None = None, now: datetime | None = None
+) -> int:
+    """Suggest what this week's winner gets or loser has to do, and return the option's id."""
+    flat_id = _own_flat_id(engine, user_id)
+    today = today or date.today()
+    monday = week_start(today)
+    try:
+        with engine.begin() as conn:
+            existing = list(conn.scalars(
+                select(weekly_prizes.c.name).where(
+                    weekly_prizes.c.flat_id == flat_id,
+                    weekly_prizes.c.week_start == monday,
+                    weekly_prizes.c.kind == kind,
+                )
+            ))
+            check_can_suggest_prize(kind, len(existing), today)
+            name = clean_prize(raw, existing)
+            values = dict(
+                flat_id=flat_id, week_start=monday, kind=kind, name=name, name_key=prize_key(name),
+                added_by=user_id, created_at=now or datetime.now(),
+            )
+            return conn.execute(insert(weekly_prizes).values(**values)).inserted_primary_key[0]
+    except IntegrityError as error:  # A flatmate suggested the same thing at the same moment.
+        raise ValueError("That has already been suggested this week.") from error
+
+
+def vote_prize(engine: Engine, user_id: int, prize_id: int, today: date | None = None) -> None:
+    """Vote for an option of the user's own flat: one vote per member in each vote, each week."""
+    flat_id = _own_flat_id(engine, user_id)
+    today = today or date.today()
+    try:
+        with engine.begin() as conn:
+            prize = conn.execute(
+                select(weekly_prizes.c.week_start, weekly_prizes.c.kind)
+                .where(weekly_prizes.c.id == prize_id, weekly_prizes.c.flat_id == flat_id)
+            ).first()
+            if prize is None:
+                raise ValueError("That option is not on your list.")
+            already = conn.scalar(
+                select(weekly_prize_votes.c.prize_id).where(
+                    weekly_prize_votes.c.user_id == user_id,
+                    weekly_prize_votes.c.week_start == prize.week_start,
+                    weekly_prize_votes.c.kind == prize.kind,
+                )
+            )
+            check_can_vote_prize(prize.week_start, already is not None, today)
+            conn.execute(insert(weekly_prize_votes).values(
+                user_id=user_id, week_start=prize.week_start, kind=prize.kind, prize_id=prize_id,
+            ))
+    except IntegrityError as error:  # Two votes at the same moment: the database lets only one through.
+        raise ValueError("You already voted in this vote this week.") from error
+
+
+def prize_overview(engine: Engine, user_id: int, today: date | None = None) -> dict:
+    """Return this week's options and deal, and last week's result, for the user's own flat, in one visit."""
+    today = today or date.today()
+    monday = week_start(today)
+    last_monday = monday - timedelta(days=7)
+    own_flat = select(memberships.c.flat_id).where(memberships.c.user_id == user_id).scalar_subquery()
+    adder, voter = users.alias("adder"), users.alias("voter")
+    with engine.connect() as conn:
+        member_rows = conn.execute(
+            select(users.c.id, users.c.name, memberships.c.flat_id)
+            .join(memberships, memberships.c.user_id == users.c.id)
+            .where(memberships.c.flat_id == own_flat)
+            .order_by(users.c.name)
+        ).all()
+        if not member_rows:
+            raise ValueError("You are not in a flat.")
+        flat_id = member_rows[0].flat_id
+        prize_rows = conn.execute(
+            select(
+                weekly_prizes.c.id, weekly_prizes.c.week_start, weekly_prizes.c.kind, weekly_prizes.c.name,
+                adder.c.name.label("who"), weekly_prize_votes.c.user_id.label("voter_id"),
+                voter.c.name.label("voter_name"),
+            )
+            .join(adder, adder.c.id == weekly_prizes.c.added_by)
+            .outerjoin(weekly_prize_votes, weekly_prize_votes.c.prize_id == weekly_prizes.c.id)
+            .outerjoin(voter, voter.c.id == weekly_prize_votes.c.user_id)
+            .where(weekly_prizes.c.flat_id == flat_id, weekly_prizes.c.week_start.in_((last_monday, monday)))
+            .order_by(weekly_prizes.c.id, voter.c.name)
+        ).all()
+        done_rows = conn.execute(
+            select(chores.c.assigned_to, chores.c.points).where(
+                chores.c.flat_id == flat_id,
+                chores.c.done_at >= datetime.combine(last_monday, time.min),
+                chores.c.done_at < datetime.combine(monday, time.min),
+            )
+        ).all()
+
+    options: dict[int, dict] = {}
+    for row in prize_rows:
+        option = options.setdefault(row.id, {
+            "id": row.id, "week": row.week_start, "kind": row.kind, "name": row.name, "who": row.who, "votes": [],
+        })
+        if row.voter_id is not None:
+            option["votes"].append({"user_id": row.voter_id, "name": row.voter_name})
+
+    def of(week: date, kind: str) -> list[dict]:
+        found = [o for o in options.values() if o["week"] == week and o["kind"] == kind]
+        return sorted(found, key=lambda o: (-len(o["votes"]), o["id"]))
+
+    def prize_name(week: date, kind: str) -> str | None:
+        chosen = chosen_prize(of(week, kind))
+        return chosen["name"] if chosen else None
+
+    names = {row.id: row.name for row in member_rows}
+    result = week_result(leaderboard(names, [(row.assigned_to, row.points) for row in done_rows]))
+    return {
+        "week": monday,
+        "voting_open": voting_is_open(today),
+        "options": {kind: of(monday, kind) for kind in PRIZE_KINDS},
+        "chosen": {kind: chosen_prize(of(monday, kind)) for kind in PRIZE_KINDS},
+        "last_week": {
+            **result,
+            "winner_prize": prize_name(last_monday, "winner"),
+            "loser_prize": prize_name(last_monday, "loser"),
+        },
     }
