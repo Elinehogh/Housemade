@@ -2,7 +2,7 @@
 # See specs/design.md. Colours were checked for readable contrast in both modes.
 
 [theme]
-font = "Outfit:https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap, sans-serif"
+font = "Poppins:https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap, sans-serif"
 headingFontWeights = [700, 600, 600, 600, 600, 600]
 baseFontSize = 17                    # Streamlit uses 16; a little bigger reads better on phones
 baseRadius = "0.75rem"
