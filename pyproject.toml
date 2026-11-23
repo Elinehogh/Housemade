@@ -5,6 +5,7 @@ description = "Chores, shopping and a shared fund for your flat"
 requires-python = ">=3.12"
 dependencies = [
     "authlib==1.9.8",
+    "cryptography==48.0.1",
     "httpx==0.28.1",
     "psycopg[binary]==3.2.12",
     "sqlalchemy==2.0.44",

@@ -7,6 +7,7 @@ import streamlit as st
 import db
 from screens import prizes
 from screens.avatar import with_name
+from screens.safe import database_guard
 from config import REFRESH_SECONDS
 from logic import (
     COMMON_CHORES,
@@ -40,6 +41,7 @@ def show(engine=None, user_id: int | None = None) -> None:
 # ticked off by flatmates show up without reloading (specs/live-updates.md). The add form stays
 # outside, so what someone is typing is not lost.
 @st.fragment(run_every=REFRESH_SECONDS)
+@database_guard()
 def _to_do(engine, user_id: int) -> None:
     today = date.today()
     open_chores = [c for c in db.list_chores(engine, user_id) if not c["done"]]
@@ -61,6 +63,7 @@ def _to_do(engine, user_id: int) -> None:
 
 
 @st.fragment(run_every=REFRESH_SECONDS)
+@database_guard()
 def _done_and_leaderboard(engine, user_id: int) -> None:
     today = date.today()
     done = [c for c in db.list_chores(engine, user_id) if c["done"]]
@@ -81,7 +84,7 @@ def _done_and_leaderboard(engine, user_id: int) -> None:
     avatars = db.flat_avatars(engine, user_id)
     for place, (name, points) in enumerate(db.chores_leaderboard(engine, user_id), start=1):
         st.markdown(f"{MEDALS.get(place, '  ')} {with_name(name, avatars)}: {points} points")
-    st.caption("This week's winner picks the next flat activity.")
+    st.caption("The flat votes below on what the winner gets and what the loser has to do.")
 
 
 def show_add_form(engine, user_id: int, today: date) -> None:
@@ -164,5 +167,5 @@ def show_demo() -> None:
     ranking = sorted(demo["points"].items(), key=lambda item: item[1], reverse=True)
     for place, (name, points) in enumerate(ranking, start=1):
         st.write(f"{MEDALS.get(place, '  ')} **{name}**: {points} points")
-    st.caption("This week's winner picks the next flat activity.")
+    st.caption("The flat votes below on what the winner gets and what the loser has to do.")
     prizes.show()

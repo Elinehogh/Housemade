@@ -6,6 +6,7 @@ import db
 from config import APP_NAME, LOCAL_DATABASE_URL
 from logic import avatar_label, display_name
 from screens import activities, avatar, chores, demo_data, fund, home, house_rules, shopping, sky, welcome
+from screens.safe import database_guard
 
 st.set_page_config(page_title=APP_NAME, page_icon="🏠")
 sky.apply()
@@ -50,104 +51,106 @@ def login_is_set_up() -> bool:
 
 st.title(APP_NAME)
 
-if login_is_set_up():
-    engine = get_engine()
-    make_tables(engine, db.schema())
-    if engine.dialect.name == "sqlite":
-        st.warning("Using a local test database: data is not shared and may be lost. "
-                   "Set DATABASE_URL in the secrets to use the real database.")
+# If the database cannot be reached, the page shows a short message instead of a technical error.
+with database_guard(retry_button=True):
+    if login_is_set_up():
+        engine = get_engine()
+        make_tables(engine, db.schema())
+        if engine.dialect.name == "sqlite":
+            st.warning("Using a local test database: data is not shared and may be lost. "
+                       "Set DATABASE_URL in the secrets to use the real database.")
 
-    # --- Login ---------------------------------------------------------------
+        # --- Login ---------------------------------------------------------------
 
-    if not st.user.get("is_logged_in"):
-        welcome.show()
-        st.stop()
+        if not st.user.get("is_logged_in"):
+            welcome.show()
+            st.stop()
 
-    me = display_name(st.user.get("name"), st.user.email)
-    user_id = known_user_id(engine, st.user.email, me)
-    context = db.member_context(engine, user_id)
+        me = display_name(st.user.get("name"), st.user.email)
+        user_id = known_user_id(engine, st.user.email, me)
+        context = db.member_context(engine, user_id)
 
-    # --- Avatar: picked once, right after the first login ----------------------
+        # --- Avatar: picked once, right after the first login ----------------------
 
-    my_avatar = context["avatar"]
-    if my_avatar is None:
-        st.subheader(f"👋 Hi {me}! Pick your avatar")
-        st.caption("Your flatmates will see it next to your name. You can change it later.")
-        avatar.picker(engine, user_id, key="first_avatar")
-        st.stop()
+        my_avatar = context["avatar"]
+        if my_avatar is None:
+            st.subheader(f"👋 Hi {me}! Pick your avatar")
+            st.caption("Your flatmates will see it next to your name. You can change it later.")
+            avatar.picker(engine, user_id, key="first_avatar")
+            st.stop()
 
-    with st.sidebar:
-        st.markdown(f"## {avatar_label(*my_avatar)}")
-        st.write(f"Logged in as **{st.user.get('name') or st.user.email}**")
-        with st.popover("Change avatar", icon=":material/face:"):
-            avatar.picker(engine, user_id, key="sidebar_avatar", avatar=my_avatar)
-        st.button("Log out", icon=":material/logout:", on_click=st.logout)
+        with st.sidebar:
+            st.markdown(f"## {avatar_label(*my_avatar)}")
+            st.write(f"Logged in as **{st.user.get('name') or st.user.email}**")
+            with st.popover("Change avatar", icon=":material/face:"):
+                avatar.picker(engine, user_id, key="sidebar_avatar", avatar=my_avatar)
+            st.button("Log out", icon=":material/logout:", on_click=st.logout)
 
-    # --- Create or join a flat -----------------------------------------------
+        # --- Create or join a flat -----------------------------------------------
 
-    membership = context["membership"]
+        membership = context["membership"]
 
-    if membership is None:
-        st.subheader("👋 Welcome! Let's set up your flat")
-        st.caption("Create a new flat and invite your flatmates, or join one with the code you got.")
-        create_tab, join_tab = st.tabs(["Create a flat", "Join a flat"])
+        if membership is None:
+            st.subheader("👋 Welcome! Let's set up your flat")
+            st.caption("Create a new flat and invite your flatmates, or join one with the code you got.")
+            create_tab, join_tab = st.tabs(["Create a flat", "Join a flat"])
 
-        with create_tab:
-            with st.form("create_flat"):
-                flat_name = st.text_input("Name of your flat", placeholder="Rua Augusta 12")
-                if st.form_submit_button("Create flat"):
-                    try:
-                        db.create_flat(engine, user_id, flat_name)
-                        st.rerun()
-                    except ValueError as error:
-                        st.error(str(error))
+            with create_tab:
+                with st.form("create_flat"):
+                    flat_name = st.text_input("Name of your flat", placeholder="Rua Augusta 12")
+                    if st.form_submit_button("Create flat"):
+                        try:
+                            db.create_flat(engine, user_id, flat_name)
+                            st.rerun()
+                        except ValueError as error:
+                            st.error(str(error))
 
-        with join_tab:
-            with st.form("join_flat"):
-                code = st.text_input("Invite code", placeholder="K7QX2M")
-                if st.form_submit_button("Join flat"):
-                    try:
-                        db.join_flat(engine, user_id, code)
-                        st.rerun()
-                    except ValueError as error:
-                        st.error(str(error))
-        st.stop()
+            with join_tab:
+                with st.form("join_flat"):
+                    code = st.text_input("Invite code", placeholder="K7QX2M")
+                    if st.form_submit_button("Join flat"):
+                        try:
+                            db.join_flat(engine, user_id, code)
+                            st.rerun()
+                        except ValueError as error:
+                            st.error(str(error))
+            st.stop()
 
-    flat_name = membership["flat_name"]
-    st.sidebar.write(f"🏠 {flat_name}")
-    invite_code = membership["invite_code"] if membership["role"] == "admin" else None
-else:
-    st.info("**Preview with sample data.** Login is not set up yet, and nothing you do here is saved.")
-    flat_name = "Demo flat"
-    engine = user_id = my_avatar = None
-    me = "You"
-    invite_code = "K7QX2M"
+        flat_name = membership["flat_name"]
+        st.sidebar.write(f"🏠 {flat_name}")
+        invite_code = membership["invite_code"] if membership["role"] == "admin" else None
+    else:
+        st.info("**Preview with sample data.** Login is not set up yet, and nothing you do here is saved.")
+        flat_name = "Demo flat"
+        engine = user_id = my_avatar = None
+        me = "You"
+        invite_code = "K7QX2M"
 
-# --- The flat ----------------------------------------------------------------
+    # --- The flat ----------------------------------------------------------------
 
-demo_data.init()
+    demo_data.init()
 
-st.caption(f"Your flat: **{flat_name}**")
-# Only the open tab is drawn. The Today tab can open another one through st.session_state.view.
-today_tab, chores_tab, shopping_tab, fund_tab, activities_tab, rules_tab = st.tabs(
-    sky.VIEWS, key="view", on_change="rerun"
-)
+    st.caption(f"Your flat: **{flat_name}**")
+    # Only the open tab is drawn. The Today tab can open another one through st.session_state.view.
+    today_tab, chores_tab, shopping_tab, fund_tab, activities_tab, rules_tab = st.tabs(
+        sky.VIEWS, key="view", on_change="rerun"
+    )
 
-with today_tab:
-    if today_tab.open:
-        home.show(engine, user_id, invite_code, me, my_avatar)
-with chores_tab:
-    if chores_tab.open:
-        chores.show(engine, user_id)
-with shopping_tab:
-    if shopping_tab.open:
-        shopping.show(engine, user_id)
-with fund_tab:
-    if fund_tab.open:
-        fund.show(engine, user_id)
-with activities_tab:
-    if activities_tab.open:
-        activities.show(engine, user_id)
-with rules_tab:
-    if rules_tab.open:
-        house_rules.show(engine, user_id)
+    with today_tab:
+        if today_tab.open:
+            home.show(engine, user_id, invite_code, me, my_avatar)
+    with chores_tab:
+        if chores_tab.open:
+            chores.show(engine, user_id)
+    with shopping_tab:
+        if shopping_tab.open:
+            shopping.show(engine, user_id)
+    with fund_tab:
+        if fund_tab.open:
+            fund.show(engine, user_id)
+    with activities_tab:
+        if activities_tab.open:
+            activities.show(engine, user_id)
+    with rules_tab:
+        if rules_tab.open:
+            house_rules.show(engine, user_id)

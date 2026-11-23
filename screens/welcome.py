@@ -9,7 +9,7 @@ PRIVACY_URL = "https://github.com/Elinehogh/Housemade/blob/main/PRIVACY.md"
 FEATURES = [
     ("🧹", "Chores", "Who does what and by when. Tick chores off, earn points and win the week."),
     ("🛒", "Shopping and costs", "One shared list, costs split fairly, and a clear view of who owes whom."),
-    ("🫙", "Shared fund", "Collect pant money, save towards a goal and pick things to do together."),
+    ("🫙", "Shared fund", "Collect deposit money from bottles and cans, and save towards a goal together."),
 ]
 
 

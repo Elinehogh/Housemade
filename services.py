@@ -5,23 +5,35 @@ cannot be reached or gives an answer we cannot use. The rules live in logic.py.
 """
 
 import json
+import time
 
 import httpx
 
 from logic import parse_location, parse_weather
 
-TIMEOUT = 5.0  # seconds; the page waits for these calls
+TIMEOUT = 2.0  # seconds per step; the page waits for these calls
+RETRY_AFTER_SECONDS = 120  # a service that failed is left alone this long, so clicks stay fast
+
+_down_until: dict[str, float] = {}
+
+
+def _get_json(service: str, url: str, problem: str, **kwargs) -> dict:
+    """Ask a service for JSON. Raises ValueError(problem) if it fails or failed a moment ago."""
+    if time.monotonic() < _down_until.get(service, 0):
+        raise ValueError(problem)
+    try:
+        response = httpx.get(url, timeout=TIMEOUT, **kwargs)
+        response.raise_for_status()
+        return response.json()
+    except (httpx.HTTPError, json.JSONDecodeError) as error:
+        _down_until[service] = time.monotonic() + RETRY_AFTER_SECONDS
+        raise ValueError(problem) from error
 
 
 def find_location(ip: str | None) -> dict:
     """City and coordinates for an IP address (ipinfo.io, no key). Without an IP, the location of this computer."""
     url = f"https://ipinfo.io/{ip}/json" if ip else "https://ipinfo.io/json"
-    try:
-        response = httpx.get(url, timeout=TIMEOUT)
-        response.raise_for_status()
-        return parse_location(response.json())
-    except (httpx.HTTPError, json.JSONDecodeError) as error:
-        raise ValueError("Your location could not be found.") from error
+    return parse_location(_get_json("location", url, "Your location could not be found."))
 
 
 def fetch_weather(lat: float, lon: float) -> dict:
@@ -34,9 +46,5 @@ def fetch_weather(lat: float, lon: float) -> dict:
         "forecast_days": 1,
         "timezone": "auto",
     }
-    try:
-        response = httpx.get("https://api.open-meteo.com/v1/forecast", params=params, timeout=TIMEOUT)
-        response.raise_for_status()
-        return parse_weather(response.json())
-    except (httpx.HTTPError, json.JSONDecodeError) as error:
-        raise ValueError("The weather is not available right now.") from error
+    url = "https://api.open-meteo.com/v1/forecast"
+    return parse_weather(_get_json("weather", url, "The weather is not available right now.", params=params))

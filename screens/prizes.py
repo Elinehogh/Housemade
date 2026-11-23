@@ -21,6 +21,7 @@ from logic import (
     week_result,
     week_start,
 )
+from screens.safe import database_guard
 
 TITLES = {"winner": "Winner gets", "loser": "Loser has to"}
 FORM_LABELS = {"winner": "Suggest what the winner gets", "loser": "Suggest what the loser has to do"}
@@ -106,6 +107,7 @@ def show(engine=None, user_id: int | None = None, today: date | None = None) -> 
 # Votes and suggestions from flatmates show up without reloading (specs/live-updates.md).
 # The suggestion forms stay outside, so what someone is typing is not lost.
 @st.fragment(run_every=REFRESH_SECONDS)
+@database_guard()
 def _live_votes(engine, user_id: int, today: date | None) -> None:
     _show_votes(engine, user_id, today or date.today())
 

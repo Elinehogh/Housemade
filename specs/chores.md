@@ -3,9 +3,9 @@
 ## Why
 
 Chores are the most common fight in a shared flat. Housemade makes it clear
-who does what, and rewards the people who do their part with points. This
-week's winner picks the next flat activity, which ties chores to the fund and
-the activities.
+who does what, and rewards the people who do their part with points. Each
+week the flat votes on what the winner gets and what the loser has to do
+(`specs/weekly-prize.md`).
 
 ## What
 
