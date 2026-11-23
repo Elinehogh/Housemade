@@ -112,14 +112,7 @@ are pinned to exact versions in `pyproject.toml` and `uv.lock`.
 - Each feature started as a spec in `specs/`, then tests, then the code.
 - Every change was made on its own branch and merged into `main` through a
   pull request.
-- Rough split of the work (see the commit history and pull requests for details):
-  - **Eline:** project setup, database layer, Google login and flats, shopping
-    and shared costs, common chores and deadlines, design (welcome page,
-    avatars) and the privacy policy.
-  - **Emil:** activities in the database, weather-based ideas and voting,
-    live updates, the Today tab and the Sky design, house rules, the weekly
-    prize and speed.
-  - **August:** the team plan, chores in the database with points and the
-    leaderboard, and the shared fund with goal and CSV export.
+- All three members wrote code for the app. The commit history and the
+  pull requests show who made each change.
 - We used AI coding assistants (Claude) to help write code and tests, following
   the rules in `AGENTS.md`.
