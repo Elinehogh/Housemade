@@ -17,6 +17,7 @@ understand what Housemade is in a few seconds.
   (chores, shopping and costs, the shared fund) above the Google login
   button, and links to the privacy policy.
 - The first tab, Today, is an overview for the logged-in member:
+  - first, what is waiting for their vote (`specs/votes-waiting.md`),
   - a large weather tile for where they are, with ideas for today's weather
     that can be added to the activities,
   - their next chore (soonest deadline first), with a button to finish it,

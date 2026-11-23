@@ -28,6 +28,7 @@ from sqlalchemy import (
     func,
     insert,
     inspect,
+    literal_column,
     null,
     select,
     text,
@@ -996,11 +997,20 @@ def today_overview(engine: Engine, user_id: int, today: date | None = None) -> d
         select(
             users.c.id, users.c.name, users.c.avatar_emoji, users.c.avatar_color,
             memberships.c.role, memberships.c.flat_id,
+            # The fund comes along with the members, to save a trip to the database.
+            select(func.coalesce(func.sum(fund_entries.c.cents), 0))
+            .where(fund_entries.c.flat_id == memberships.c.flat_id)
+            .correlate(memberships).scalar_subquery().label("balance"),
+            select(fund_goals.c.name).where(fund_goals.c.flat_id == memberships.c.flat_id)
+            .correlate(memberships).scalar_subquery().label("goal_name"),
+            select(fund_goals.c.cents).where(fund_goals.c.flat_id == memberships.c.flat_id)
+            .correlate(memberships).scalar_subquery().label("goal_cents"),
         )
         .join(memberships, memberships.c.user_id == users.c.id)
         .where(memberships.c.flat_id == own_flat)
         .order_by(users.c.name)
     )
+    monday_of_week = week_start(today or date.today())
     with engine.connect() as conn:
         member_rows = conn.execute(members_query).all()
         if not member_rows:
@@ -1016,16 +1026,10 @@ def today_overview(engine: Engine, user_id: int, today: date | None = None) -> d
             )
         ).all()
         items = _items_on(conn, flat_id)
-        fund_row = conn.execute(
-            select(
-                select(func.coalesce(func.sum(fund_entries.c.cents), 0))
-                .where(fund_entries.c.flat_id == flat_id).scalar_subquery().label("balance"),
-                select(fund_goals.c.name).where(fund_goals.c.flat_id == flat_id).scalar_subquery().label("goal_name"),
-                select(fund_goals.c.cents).where(fund_goals.c.flat_id == flat_id).scalar_subquery().label("goal_cents"),
-            )
-        ).one()
         activity_items = _activities_on(conn, flat_id)
+        prize_options, rules_in_vote = _open_votes_on(conn, flat_id, monday_of_week)
 
+    fund_row = member_rows[0]
     names = {row.id: row.name for row in member_rows}
     balance = shopping_balances(
         list(names),
@@ -1050,7 +1054,49 @@ def today_overview(engine: Engine, user_id: int, today: date | None = None) -> d
         "goal": None if fund_row.goal_name is None else {"name": fund_row.goal_name, "cents": fund_row.goal_cents},
         "leaderboard": leaderboard(names, done_this_week),
         "activities": activity_items,
+        "prize_options": prize_options,
+        "rules_in_vote": rules_in_vote,
+        "votes_needed": votes_needed(len(member_rows)),
     }
+
+
+def _open_votes_on(conn, flat_id: int, monday: date) -> tuple[dict, list[dict]]:
+    """This week's prize options, and the rules someone has voted to remove, with their votes, in one query."""
+    prize_part = (
+        select(
+            literal_column("'prize'").label("source"), weekly_prizes.c.id, weekly_prizes.c.kind,
+            weekly_prizes.c.name, weekly_prize_votes.c.user_id.label("voter_id"), users.c.name.label("voter_name"),
+        )
+        .select_from(
+            weekly_prizes.outerjoin(weekly_prize_votes, weekly_prize_votes.c.prize_id == weekly_prizes.c.id)
+            .outerjoin(users, users.c.id == weekly_prize_votes.c.user_id)
+        )
+        .where(weekly_prizes.c.flat_id == flat_id, weekly_prizes.c.week_start == monday)
+    )
+    rule_part = (
+        select(
+            literal_column("'rule'"), house_rules.c.id, null(), house_rules.c.text,
+            rule_removal_votes.c.user_id, users.c.name,
+        )
+        .join(rule_removal_votes, rule_removal_votes.c.rule_id == house_rules.c.id)
+        .join(users, users.c.id == rule_removal_votes.c.user_id)
+        .where(house_rules.c.flat_id == flat_id)
+    )
+    rows = sorted(conn.execute(union_all(prize_part, rule_part)).all(), key=lambda row: (row.id, row.voter_name or ""))
+
+    prizes: dict[int, dict] = {}
+    rules: dict[int, dict] = {}
+    for row in rows:
+        if row.source == "prize":
+            option = prizes.setdefault(row.id, {"id": row.id, "kind": row.kind, "name": row.name, "votes": []})
+            if row.voter_id is not None:
+                option["votes"].append({"user_id": row.voter_id, "name": row.voter_name})
+        else:
+            rule = rules.setdefault(row.id, {"id": row.id, "text": row.name, "voters": [], "voter_ids": []})
+            rule["voters"].append(row.voter_name)
+            rule["voter_ids"].append(row.voter_id)
+    options = {kind: [o for o in prizes.values() if o["kind"] == kind] for kind in PRIZE_KINDS}
+    return options, list(rules.values())
 
 
 # --- Weekly prize (specs/weekly-prize.md) ----------------------------------------

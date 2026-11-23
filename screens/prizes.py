@@ -75,12 +75,17 @@ def _suggest(engine, user_id: int | None, kind: str, text: str, today: date) -> 
     demo["prizes"].append({"id": next_id, "week": monday, "kind": kind, "name": name, "who": DEMO_USER, "votes": []})
 
 
-def _vote(engine, user_id: int | None, option: dict, already_voted: bool, today: date) -> None:
+def cast_vote(engine, user_id: int | None, option_id: int, today: date) -> None:
+    """Vote for an option. Raises ValueError if this member may not vote for it now."""
     if engine is not None:
-        db.vote_prize(engine, user_id, option["id"], today=today)
+        db.vote_prize(engine, user_id, option_id, today=today)
         return
-    check_can_vote_prize(option["week"], already_voted, today)
-    prize = next(p for p in st.session_state.demo["prizes"] if p["id"] == option["id"])
+    prizes = st.session_state.demo["prizes"]
+    prize = next(p for p in prizes if p["id"] == option_id)
+    already_voted = any(
+        DEMO_USER in p["votes"] for p in prizes if p["week"] == prize["week"] and p["kind"] == prize["kind"]
+    )
+    check_can_vote_prize(prize["week"], already_voted, today)
     prize["votes"].append(DEMO_USER)
 
 
@@ -139,7 +144,7 @@ def _open_vote(engine, user_id, kind: str, options: list[dict], me, today: date)
             label = "✓ Voted" if option["id"] == my_vote else "Vote"
             if st.button(label, key=f"prize_vote_{option['id']}", disabled=my_vote is not None):
                 try:
-                    _vote(engine, user_id, option, my_vote is not None, today)
+                    cast_vote(engine, user_id, option["id"], today)
                     st.rerun()
                 except ValueError as error:
                     st.error(str(error))

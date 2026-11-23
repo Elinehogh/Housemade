@@ -753,3 +753,83 @@ def week_result(ranking: list[tuple[str, int]]) -> dict:
         "winners": [name for name, score in ranking if score == max(points)],
         "losers": [name for name, score in ranking if score == min(points)],
     }
+
+
+# --- Votes waiting for a member (specs/votes-waiting.md) -----------------------
+
+MAX_ACTIVITY_CHOICES = 3
+PRIZE_QUESTIONS = {
+    "winner": "What should this week's winner get?",
+    "loser": "What should this week's loser have to do?",
+}
+
+
+def votes_waiting(
+    prize_options: dict, activities: list[dict], rules: list[dict], me, today: date, needed: int, skipped=(),
+) -> list[dict]:
+    """What is waiting for this member's vote, most urgent first. skipped holds keys hidden with Not now.
+
+    Each item has 'key', 'type' (prize, rule or activity), 'question', 'note', 'choices' and 'more'.
+    A choice has 'id', 'label' and 'votes'.
+    """
+    waiting = _prizes_waiting(prize_options, me, today) + _rules_waiting(rules, me, needed)
+    waiting += _activity_waiting(activities, me, today)
+    return [item for item in waiting if item["key"] not in skipped]
+
+
+def _prizes_waiting(prize_options: dict, me, today: date) -> list[dict]:
+    if not voting_is_open(today):
+        return []
+    note = "Voting closes tonight" if today.weekday() == LAST_VOTING_WEEKDAY else "Voting closes Wednesday"
+    items = []
+    for kind in PRIZE_KINDS:
+        options = prize_options.get(kind, [])
+        if not options or any(cast["user_id"] == me for option in options for cast in option["votes"]):
+            continue
+        ordered = sorted(options, key=lambda option: (-len(option["votes"]), option["id"]))
+        items.append({
+            "key": f"prize:{kind}:{week_start(today).isoformat()}",
+            "type": "prize",
+            "question": PRIZE_QUESTIONS[kind],
+            "note": note,
+            "choices": [{"id": o["id"], "label": o["name"], "votes": len(o["votes"])} for o in ordered],
+            "more": 0,
+        })
+    return items
+
+
+def _rules_waiting(rules: list[dict], me, needed: int) -> list[dict]:
+    return [
+        {
+            "key": f"rule:{rule['id']}",
+            "type": "rule",
+            "question": f'Remove the rule "{rule["text"]}"?',
+            "note": f"{len(rule['voters'])} of {needed} votes so far: {', '.join(rule['voters'])}",
+            "choices": [{"id": rule["id"], "label": "Vote to remove", "votes": len(rule["voters"])}],
+            "more": 0,
+        }
+        for rule in rules
+        if rule["voter_ids"] and me not in rule["voter_ids"]
+    ]
+
+
+def _activity_waiting(activities: list[dict], me, today: date) -> list[dict]:
+    if any(cast["user_id"] == me and cast["day"] == today for item in activities for cast in item["votes"]):
+        return []
+    open_items = [
+        item for item in activities
+        if item["planned_on"] >= today and all(cast["user_id"] != me for cast in item["votes"])
+    ]
+    if not open_items:
+        return []
+    return [{
+        "key": f"activity:{today.isoformat()}",
+        "type": "activity",
+        "question": "Which activity do you want most?",
+        "note": "You have 1 vote today",
+        "choices": [
+            {"id": item["id"], "label": item["activity"], "votes": len(item["votes"])}
+            for item in open_items[:MAX_ACTIVITY_CHOICES]
+        ],
+        "more": max(len(open_items) - MAX_ACTIVITY_CHOICES, 0),
+    }]

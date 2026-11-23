@@ -173,6 +173,31 @@
   width: auto !important;
 }
 
+/* Needs your vote: the first thing on Today. */
+.st-key-tile_votes {
+  background: var(--hm-lilac);
+  height: auto;
+  margin-bottom: 4px;
+}
+[class*="st-key-votecard_"] {
+  box-sizing: border-box;
+  background: #FFFFFF;
+  color: #14213D;
+  border-radius: 20px;
+  padding: 14px 16px;
+}
+.hm-vote-question { margin: 0; font-size: 1.2rem; line-height: 1.2; font-weight: 700; color: #14213D; overflow-wrap: anywhere; }
+.hm-vote-note { margin: 3px 0 0; font-size: 0.95rem; line-height: 1.3; font-weight: 500; color: #3C4763; }
+.hm-caught-up { margin: 0 0 4px; font-size: 1.05rem; font-weight: 600; }
+.st-key-tile_votes button[kind="tertiary"] {
+  background: transparent;
+  color: #14213D;
+}
+.st-key-tile_votes button[kind="tertiary"]:hover {
+  background: #EEF1F8;
+  color: #14213D;
+}
+
 /* The House rules tile is one big button that opens the tab. */
 .st-key-open_rules, .st-key-open_rules .stButton, .st-key-open_rules [data-testid="stTooltipHoverTarget"] {
   height: 100%;
