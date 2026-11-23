@@ -21,6 +21,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    UniqueConstraint,
     create_engine,
     delete,
     event,
@@ -32,6 +33,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
 from logic import (
     INVITE_CODE_LENGTH,
@@ -42,10 +44,12 @@ from logic import (
     MAX_ITEM_LENGTH,
     MAX_NAME_LENGTH,
     MAX_POINTS,
+    MAX_RULE_LENGTH,
     MIN_POINTS,
     ROLES,
     check_can_take_out,
     check_can_tick_off,
+    check_can_vote_to_remove,
     check_deadline,
     check_payment,
     clean_chore_name,
@@ -56,12 +60,16 @@ from logic import (
     clean_member_name,
     check_avatar,
     clean_points,
+    clean_rule,
     cost_to_cents,
+    has_majority,
     leaderboard,
     new_invite_code,
+    rule_key,
     settle_up,
     shopping_balances,
     to_cents,
+    votes_needed,
     week_start,
 )
 
@@ -172,6 +180,28 @@ fund_goals = Table(
     Column("name", String(MAX_DESCRIPTION_LENGTH), nullable=False),
     Column("cents", Integer, nullable=False),
     CheckConstraint("cents > 0", name="positive_goal"),
+)
+
+# A flat's house rules. rule_key is the text without capitals, so a flat cannot have the same rule twice.
+# It is longer than the text because ignoring capitals can make a few letters longer (ß becomes ss).
+house_rules = Table(
+    "house_rules",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("flat_id", ForeignKey("flats.id"), nullable=False),
+    Column("text", String(MAX_RULE_LENGTH), nullable=False),
+    Column("rule_key", String(MAX_RULE_LENGTH * 3), nullable=False),
+    Column("added_by", ForeignKey("users.id"), nullable=False),
+    Column("added_at", DateTime, nullable=False),
+    UniqueConstraint("flat_id", "rule_key", name="one_rule_per_flat"),
+)
+
+# Votes to remove a house rule. The primary key means each member can vote once per rule.
+rule_removal_votes = Table(
+    "rule_removal_votes",
+    metadata,
+    Column("rule_id", ForeignKey("house_rules.id"), primary_key=True),
+    Column("user_id", ForeignKey("users.id"), primary_key=True),
 )
 
 
@@ -656,3 +686,77 @@ def get_fund_goal(engine: Engine, user_id: int) -> dict | None:
     with engine.connect() as conn:
         row = conn.execute(select(fund_goals.c.name, fund_goals.c.cents).where(fund_goals.c.flat_id == flat_id)).first()
     return None if row is None else {"name": row.name, "cents": row.cents}
+
+
+# --- House rules (specs/house-rules.md) -----------------------------------------
+
+
+def add_rule(engine: Engine, user_id: int, raw: str, now: datetime | None = None) -> int:
+    """Add a rule to the user's own flat, and return its id."""
+    flat_id = _own_flat_id(engine, user_id)
+    try:
+        with engine.begin() as conn:
+            existing = list(conn.scalars(select(house_rules.c.text).where(house_rules.c.flat_id == flat_id)))
+            rule = clean_rule(raw, existing)
+            values = dict(flat_id=flat_id, text=rule, rule_key=rule_key(rule), added_by=user_id, added_at=now or datetime.now())
+            return conn.execute(insert(house_rules).values(**values)).inserted_primary_key[0]
+    except IntegrityError as error:  # A flatmate added the same rule at the same moment.
+        raise ValueError("That rule is already on the list.") from error
+
+
+def list_rules(engine: Engine, user_id: int) -> list[dict]:
+    """Return the rules of the user's own flat, oldest first, with who voted to remove each one."""
+    flat_id = _own_flat_id(engine, user_id)
+    rules_query = (
+        select(house_rules.c.id, house_rules.c.text, house_rules.c.added_at, users.c.name.label("who"))
+        .join(users, users.c.id == house_rules.c.added_by)
+        .where(house_rules.c.flat_id == flat_id)
+        .order_by(house_rules.c.id)
+    )
+    votes_query = (
+        select(rule_removal_votes.c.rule_id, users.c.id, users.c.name)
+        .join(users, users.c.id == rule_removal_votes.c.user_id)
+        .join(house_rules, house_rules.c.id == rule_removal_votes.c.rule_id)
+        .where(house_rules.c.flat_id == flat_id)
+        .order_by(users.c.name)
+    )
+    members_query = select(func.count()).select_from(memberships).where(memberships.c.flat_id == flat_id)
+    with engine.connect() as conn:
+        rules = conn.execute(rules_query).mappings().all()
+        votes = conn.execute(votes_query).all()
+        needed = votes_needed(conn.scalar(members_query))
+    return [
+        {
+            **rule,
+            "voters": [vote.name for vote in votes if vote.rule_id == rule["id"]],
+            "voter_ids": [vote.id for vote in votes if vote.rule_id == rule["id"]],
+            "votes_needed": needed,
+        }
+        for rule in rules
+    ]
+
+
+def vote_to_remove(engine: Engine, user_id: int, rule_id: int) -> bool:
+    """Vote to remove a rule of the user's own flat. Return True if this vote reached the majority and removed it."""
+    flat_id = _own_flat_id(engine, user_id)
+    try:
+        with engine.begin() as conn:
+            # Lock the rule, so two votes at the same moment are counted one after the other.
+            found = conn.scalar(
+                select(house_rules.c.id)
+                .where(house_rules.c.id == rule_id, house_rules.c.flat_id == flat_id)
+                .with_for_update()
+            )
+            if found is None:
+                raise ValueError("That rule is not on your list.")
+            voters = list(conn.scalars(select(rule_removal_votes.c.user_id).where(rule_removal_votes.c.rule_id == rule_id)))
+            check_can_vote_to_remove(voters, user_id)
+            conn.execute(insert(rule_removal_votes).values(rule_id=rule_id, user_id=user_id))
+            members = conn.scalar(select(func.count()).select_from(memberships).where(memberships.c.flat_id == flat_id))
+            if not has_majority(len(voters) + 1, members):
+                return False
+            conn.execute(delete(rule_removal_votes).where(rule_removal_votes.c.rule_id == rule_id))
+            conn.execute(delete(house_rules).where(house_rules.c.id == rule_id))
+            return True
+    except IntegrityError as error:  # The same member voted twice at the same moment.
+        raise ValueError("You already voted to remove this rule.") from error

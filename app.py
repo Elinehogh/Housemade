@@ -5,7 +5,7 @@ import streamlit as st
 import db
 from config import APP_NAME, LOCAL_DATABASE_URL
 from logic import avatar_label, display_name
-from screens import activities, avatar, chores, demo_data, fund, home, shopping, welcome
+from screens import activities, avatar, chores, demo_data, fund, home, house_rules, shopping, welcome
 
 st.set_page_config(page_title=APP_NAME, page_icon="🏠")
 
@@ -117,8 +117,8 @@ else:
 demo_data.init()
 
 st.caption(f"Your flat: **{flat_name}**")
-home_tab, chores_tab, shopping_tab, fund_tab, activities_tab = st.tabs(
-    ["🏠 Flat", "🧹 Chores", "🛒 Shopping", "🫙 Fund", "🎉 Activities"]
+home_tab, chores_tab, shopping_tab, fund_tab, activities_tab, rules_tab = st.tabs(
+    ["🏠 Flat", "🧹 Chores", "🛒 Shopping", "🫙 Fund", "🎉 Activities", "📜 House rules"]
 )
 
 with home_tab:
@@ -131,3 +131,5 @@ with fund_tab:
     fund.show(engine, user_id)
 with activities_tab:
     activities.show(me)
+with rules_tab:
+    house_rules.show(engine, user_id)
