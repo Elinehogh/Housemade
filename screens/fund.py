@@ -1,9 +1,9 @@
-"""The shared fund: pant money in, shared costs out, and a savings goal."""
+"""The shared fund: deposit money from bottles and cans in, shared costs out, and a savings goal."""
 
 import streamlit as st
 
 import db
-from logic import MAX_FUND_AMOUNT, clean_amount, format_euros, fund_csv, goal_progress
+from logic import MAX_FUND_AMOUNT, clean_amount, format_euros, fund_csv, fund_label, goal_progress
 from screens.demo_data import MEMBERS
 
 
@@ -24,7 +24,8 @@ def show(engine=None, user_id: int | None = None) -> None:
         st.progress(goal_progress(balance, goal["cents"]), text=text)
 
     with st.form("add_pant", clear_on_submit=True):
-        st.write("**Add pant money**")
+        st.write("**Add deposit money**")
+        st.caption("The money you get back for returning bottles and cans.")
         amount = st.number_input("Amount (€)", min_value=0.0, max_value=float(MAX_FUND_AMOUNT), step=0.1, key="pant_amount")
         if st.form_submit_button("Add to fund"):
             try:
@@ -65,9 +66,10 @@ def show(engine=None, user_id: int | None = None) -> None:
         st.caption("Nothing here yet. Return some bottles!")
     for entry in history:
         sign = "+" if entry["cents"] > 0 else ""
-        st.write(f"{sign}{format_euros(entry['cents'])} · {entry['what']} · {entry['who']} · {entry['date']:%d %b}")
+        st.write(f"{sign}{format_euros(entry['cents'])} · {fund_label(entry['what'])} · {entry['who']} · {entry['date']:%d %b}")
     if history:
-        st.download_button("Download history (CSV)", fund_csv(history), file_name="housemade-fund.csv", mime="text/csv")
+        shown = [{**entry, "what": fund_label(entry["what"])} for entry in history]
+        st.download_button("Download history (CSV)", fund_csv(shown), file_name="housemade-fund.csv", mime="text/csv")
 
 
 def show_demo() -> None:
@@ -81,12 +83,13 @@ def show_demo() -> None:
     st.progress(min(max(total / goal_amount, 0.0), 1.0), text=f"Saving for: {goal_name} (€{total:.2f} of €{goal_amount:.0f})")
 
     with st.form("add_pant", clear_on_submit=True):
-        st.write("**Add pant money**")
+        st.write("**Add deposit money**")
+        st.caption("The money you get back for returning bottles and cans.")
         who = st.selectbox("Who returned the bottles?", MEMBERS)
         amount = st.number_input("Amount (€)", min_value=0.0, step=0.1)
         if st.form_submit_button("Add to fund"):
             try:
-                demo["fund"].append({"what": "Pant", "who": who, "amount": clean_amount(amount)})
+                demo["fund"].append({"what": "Deposit money", "who": who, "amount": clean_amount(amount)})
                 st.rerun()
             except ValueError as error:
                 st.error(str(error))

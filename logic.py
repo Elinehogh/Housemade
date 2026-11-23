@@ -833,3 +833,13 @@ def _activity_waiting(activities: list[dict], me, today: date) -> list[dict]:
         ],
         "more": max(len(open_items) - MAX_ACTIVITY_CHOICES, 0),
     }]
+
+
+# --- Words on the screen (specs/reliability.md) --------------------------------
+
+DEPOSIT_LABEL = "Deposit money"
+
+
+def fund_label(what: str) -> str:
+    """How a fund entry is shown. Deposit money is saved as 'Pant'; everything else is shown as typed."""
+    return DEPOSIT_LABEL if what == "Pant" else what

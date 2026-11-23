@@ -8,6 +8,7 @@ import db
 from config import REFRESH_SECONDS
 from logic import MAX_RULE_LENGTH, check_can_vote_to_remove, clean_rule, has_majority, votes_needed
 from screens.demo_data import MEMBERS
+from screens.safe import database_guard
 
 EXPLANATION = "Removing a rule takes a majority of the flat. Everyone gets one vote per rule, and it cannot be taken back."
 
@@ -46,6 +47,7 @@ def cast_remove_vote(engine, user_id: int | None, rule_id: int) -> None:
 # The list asks the database again every few seconds, so flatmates' rules and votes show up
 # without reloading (specs/live-updates.md). The add form stays outside.
 @st.fragment(run_every=REFRESH_SECONDS)
+@database_guard()
 def _rule_list(engine, user_id: int) -> None:
     rules = db.list_rules(engine, user_id)
     if not rules:

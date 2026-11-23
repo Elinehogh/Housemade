@@ -94,6 +94,8 @@ from logic import (
     week_start,
 )
 
+CONNECT_TIMEOUT_SECONDS = 5  # give up quickly if the database cannot be reached (specs/reliability.md)
+
 metadata = MetaData()
 
 users = Table(
@@ -288,7 +290,8 @@ def engine_from_url(url: str) -> Engine:
     # Supabase gives 'postgresql://...'; SQLAlchemy needs to be told to use psycopg.
     if url.startswith("postgresql://"):
         url = "postgresql+psycopg://" + url.removeprefix("postgresql://")
-    engine = create_engine(url, pool_pre_ping=True)
+    options = {"connect_args": {"connect_timeout": CONNECT_TIMEOUT_SECONDS}} if url.startswith("postgresql") else {}
+    engine = create_engine(url, pool_pre_ping=True, **options)
     if engine.dialect.name == "sqlite":
         # SQLite ignores foreign keys unless they are switched on.
         @event.listens_for(engine, "connect")

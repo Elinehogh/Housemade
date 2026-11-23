@@ -25,6 +25,7 @@ from logic import (
 from screens import activities, votes
 from screens.avatar import picker, with_name
 from screens.demo_data import MEMBERS
+from screens.safe import database_guard
 from screens.sky import open_view
 
 WET_WEATHER = ("rainy", "stormy")
@@ -98,6 +99,7 @@ def _weather_tile(engine, user_id: int | None, items: list[dict]) -> None:
 # Everything here comes from one visit to the database (specs/speed.md),
 # and is asked for again every few seconds (specs/live-updates.md).
 @st.fragment(run_every=REFRESH_SECONDS)
+@database_guard()
 def _live_today(engine, user_id: int, invite_code: str | None) -> None:
     today = date.today()
     data = db.today_overview(engine, user_id, today)

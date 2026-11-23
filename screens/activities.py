@@ -25,6 +25,7 @@ from logic import (
     rank_activities,
     rule_suggestions,
 )
+from screens.safe import database_guard
 
 WEATHER_ICONS = {"sunny": "☀️", "cloudy": "⛅", "foggy": "🌫️", "rainy": "🌧️", "snowy": "❄️", "stormy": "⛈️"}
 DEMO_USER = "You"
@@ -196,6 +197,7 @@ def _show_ideas(engine, user_id: int | None) -> None:
 # The list asks the database again every few seconds, so flatmates' activities and votes show up
 # without reloading (specs/live-updates.md). The add form stays outside.
 @st.fragment(run_every=REFRESH_SECONDS)
+@database_guard()
 def _live_list(engine, user_id: int) -> None:
     _show_list(engine, user_id)
 
